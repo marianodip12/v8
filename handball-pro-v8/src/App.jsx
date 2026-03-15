@@ -1913,16 +1913,52 @@ export default function App(){
 
   // ── START MATCH ──
   const startMatch=useCallback(async(opts)=>{
-    const {teamId,awayName,competition,round}=opts;
+    const {teamId,awayName,competition,round,rivalPlayers=[]}=opts;
     const team=teams.find(t=>t.id===teamId)||homeTeam;
+    let matchId=null;
     try{
       const {data}=await supabase.from("matches").insert({
         home_name:team?.name||"Local",away_name:awayName,
         home_color:team?.color||T.accent,away_color:"#64748b",
         status:"live",competition:competition||"Liga",round:round||null,
       }).select().single();
-      if(data)setLiveMatchId(data.id);
+      if(data)matchId=data.id;
     }catch(e){console.warn(e);}
+
+    // Guardar/actualizar rival y sus jugadores
+    let loadedPlayers=rivalPlayers;
+    if(awayName.trim()){
+      try{
+        // Buscar o crear equipo rival
+        let {data:rival}=await supabase.from("rival_teams")
+          .select("*, rival_players(*)")
+          .ilike("name",awayName.trim())
+          .maybeSingle();
+        if(!rival){
+          const {data:newRival}=await supabase.from("rival_teams")
+            .insert({name:awayName.trim()}).select().single();
+          rival=newRival;
+        }
+        // Guardar jugadores nuevos
+        if(rival?.id&&rivalPlayers.length>0){
+          const existing=(rival.rival_players||[]).map(p=>p.number);
+          const toInsert=rivalPlayers.filter(p=>!existing.includes(p.number));
+          if(toInsert.length>0){
+            await supabase.from("rival_players").insert(
+              toInsert.map(p=>({rival_team_id:rival.id,name:p.name,number:p.number,position:p.position||"Campo"}))
+            );
+          }
+          // Recargar jugadores completos
+          const {data:allP}=await supabase.from("rival_players").select("*").eq("rival_team_id",rival.id);
+          loadedPlayers=allP||rivalPlayers;
+        } else if(rival?.rival_players?.length){
+          loadedPlayers=rival.rival_players;
+        }
+      }catch(e){console.warn(e);}
+    }
+
+    setAwayPlayers(loadedPlayers);
+    if(matchId)setLiveMatchId(matchId);
     setSelTeamId(teamId||selTeamId);
     setLiveMatchInfo({home:team?.name||"Local",away:awayName,date:null,competition:competition||"Liga"});
     setLiveEvents([]);
@@ -1991,7 +2027,34 @@ export default function App(){
   // ── NEW MATCH MODAL ──
   const NewMatchModal=()=>{
     const [form,setForm]=useState({teamId:teams[0]?.id||"",awayName:"",competition:"Liga",round:""});
+    const [rivalPlayers,setRivalPlayers]=useState([]);
+    const [addingPlayer,setAddingPlayer]=useState(false);
+    const [newP,setNewP]=useState({name:"",number:"",position:"Campo"});
     const upd=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+    // Buscar rival existente cuando cambia el nombre
+    const onAwayNameChange=async(val)=>{
+      upd("awayName",val);
+      if(val.length>=3){
+        try{
+          const {data}=await supabase.from("rival_teams")
+            .select("*, rival_players(*)")
+            .ilike("name",`%${val}%`)
+            .maybeSingle();
+          if(data?.rival_players?.length){
+            setRivalPlayers(data.rival_players);
+          }
+        }catch(e){}
+      }
+    };
+
+    const addRivalPlayer=()=>{
+      if(!newP.name||!newP.number)return;
+      setRivalPlayers(prev=>[...prev,{id:Date.now(),name:newP.name.trim(),number:parseInt(newP.number),position:newP.position}]);
+      setNewP({name:"",number:"",position:"Campo"});
+      setAddingPlayer(false);
+    };
+
     return(
       <Modal title="🤾 Nuevo Partido" onClose={()=>setShowNewMatch(false)}>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2012,10 +2075,48 @@ export default function App(){
           </div>
           <div>
             <SectionLabel>RIVAL</SectionLabel>
-            <input value={form.awayName} onChange={e=>upd("awayName",e.target.value)}
+            <input value={form.awayName} onChange={e=>onAwayNameChange(e.target.value)}
               placeholder="Nombre del equipo rival"
               style={{width:"100%",background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 14px",color:T.text,fontSize:14,boxSizing:"border-box"}}/>
           </div>
+          {/* Plantel rival opcional */}
+          {form.awayName.trim().length>0&&(
+            <div style={{background:T.card2,borderRadius:11,border:`1px solid ${T.border}`,padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:rivalPlayers.length>0?8:0}}>
+                <SectionLabel>PLANTEL RIVAL (opcional)</SectionLabel>
+                <button onClick={()=>setAddingPlayer(!addingPlayer)}
+                  style={{background:T.accent+"22",border:`1px solid ${T.accent}44`,color:T.accent,borderRadius:8,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                  + Agregar
+                </button>
+              </div>
+              {rivalPlayers.length>0&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                  {rivalPlayers.map((p,i)=>(
+                    <div key={p.id||i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 8px",fontSize:10,color:T.text,display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{color:T.muted,fontWeight:700}}>#{p.number}</span> {p.name}
+                      <button onClick={()=>setRivalPlayers(prev=>prev.filter((_,j)=>j!==i))}
+                        style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:11,padding:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {addingPlayer&&(
+                <div style={{display:"flex",gap:6,marginTop:6}}>
+                  <input value={newP.number} onChange={e=>setNewP(f=>({...f,number:e.target.value}))}
+                    placeholder="#" type="number"
+                    style={{width:50,background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 8px",color:T.text,fontSize:12,boxSizing:"border-box"}}/>
+                  <input value={newP.name} onChange={e=>setNewP(f=>({...f,name:e.target.value}))}
+                    placeholder="Nombre"
+                    style={{flex:1,background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",color:T.text,fontSize:12,boxSizing:"border-box"}}/>
+                  <button onClick={addRivalPlayer}
+                    style={{background:T.green,border:"none",color:"#fff",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>✓</button>
+                </div>
+              )}
+              {rivalPlayers.length===0&&!addingPlayer&&(
+                <div style={{fontSize:10,color:T.muted}}>Sin plantel — podés agregar jugadores para el análisis completo</div>
+              )}
+            </div>
+          )}
           <div>
             <SectionLabel>COMPETENCIA</SectionLabel>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
@@ -2034,7 +2135,7 @@ export default function App(){
               placeholder="Ej: Jornada 5, Final, etc."
               style={{width:"100%",background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 14px",color:T.text,fontSize:13,boxSizing:"border-box"}}/>
           </div>
-          <Btn onClick={()=>startMatch(form)} disabled={!form.teamId||!form.awayName.trim()} color={T.accent}>
+          <Btn onClick={()=>startMatch({...form,rivalPlayers})} disabled={!form.teamId||!form.awayName.trim()} color={T.accent}>
             ▶ Iniciar partido
           </Btn>
         </div>
