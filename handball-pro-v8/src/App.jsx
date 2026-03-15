@@ -364,12 +364,21 @@ function StatsCourt({shots}){
               onClick={()=>{setSelZone(selZone===key?null:key);setDetailTab("goals");}}
             />
           ))}
-          {Object.entries(ZONES).map(([key,zone])=>(
-            <text key={key+"t"} x={zone.lx} y={zone.ly} textAnchor="middle"
-              style={{fontSize:10,fill:"rgba(255,255,255,.8)",fontWeight:700,pointerEvents:"none"}}>
-              {zone.short}
-            </text>
-          ))}
+          {Object.entries(ZONES).map(([key,zone])=>{
+            const v=getVal(key)||0;
+            return(
+              <g key={key+"t"}>
+                <text x={zone.lx} y={zone.ly-6} textAnchor="middle"
+                  style={{fontSize:9,fill:"rgba(255,255,255,.7)",fontWeight:700,pointerEvents:"none"}}>
+                  {zone.short}
+                </text>
+                {v>0&&<text x={zone.lx} y={zone.ly+8} textAnchor="middle"
+                  style={{fontSize:11,fill:modeColor,fontWeight:900,pointerEvents:"none"}}>
+                  {v}
+                </text>}
+              </g>
+            );
+          })}
         </svg>
       </div>
       {selZone&&(
@@ -854,16 +863,35 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
 
   const fullShots=useMemo(()=>sourceEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null).map(e=>({
     zone:e.zone,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
-    player:e.shooter?.name||"?",number:e.shooter?.number||0,quadrant:e.quadrant??0,
+    player:e.shooter?.name||"?",number:e.shooter?.number||0,
+    quadrant:e.quadrant!=null?parseInt(e.quadrant):null,
+    goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
     distance:e.distance||null,situation:e.situation||null,throwType:e.throwType||null,
+    team:e.team,
   })),[sourceEvents]);
 
   const quickShots=useMemo(()=>sourceEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&(!e.completed||e.quickMode)).map(e=>({
     zone:e.zone||null,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
     player:"Sin datos",number:0,quadrant:null,team:e.team,situation:e.situation||null,
+    goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
   })),[sourceEvents]);
 
   const shots=dataMode==="full"?fullShots:quickShots;
+
+  // Stats por arquero
+  const goalkeeperMap=useMemo(()=>{
+    const m={};
+    fullShots.forEach(s=>{
+      if(!s.goalkeeper)return;
+      const k=s.goalkeeper;
+      if(!m[k])m[k]={name:k,number:s.goalkeeperNumber,saved:0,goals:0,miss:0,total:0};
+      m[k].total++;
+      if(s.result==="saved")m[k].saved++;
+      else if(s.result==="goal")m[k].goals++;
+      else m[k].miss++;
+    });
+    return Object.values(m).sort((a,b)=>b.saved-a.saved);
+  },[fullShots]);
 
   const totals=useMemo(()=>({
     total:shots.length,
@@ -933,8 +961,8 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
         <>
           <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
             {(dataMode==="full"
-              ?[{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"analysis",l:"📐 Análisis"}]
-              :[{k:"players",l:"👥 Jugadores"},{k:"analysis",l:"📐 Análisis"}]
+              ?[{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}]
+              :[{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}]
             ).map(t=>(
               <button key={t.k} onClick={()=>setMainTab(t.k)}
                 style={{flex:1,background:mainTab===t.k?T.accent:T.card,color:mainTab===t.k?"#fff":T.muted,
@@ -947,11 +975,18 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
           {mainTab==="goal"&&dataMode==="full"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:10}}>
-                {[{k:"goals",l:"⚽",c:T.green},{k:"saved",l:"🧤",c:"#60a5fa"},{k:"miss",l:"❌",c:T.red},{k:"total",l:"📊",c:T.yellow}].map(m=>(
+                {[
+                  {k:"goals",l:"⚽ Goles",c:T.green,    v:totals.goals},
+                  {k:"saved",l:"🧤 Ataj.", c:"#60a5fa", v:totals.saved},
+                  {k:"miss", l:"❌ Err.",  c:T.red,      v:totals.miss},
+                  {k:"total",l:"📊 Total", c:T.yellow,   v:totals.total},
+                ].map(m=>(
                   <button key={m.k} onClick={()=>setGoalMode(m.k)}
                     style={{flex:1,background:goalMode===m.k?m.c+"28":T.card,color:goalMode===m.k?m.c:T.muted,
-                      border:`1px solid ${goalMode===m.k?m.c:T.border}`,borderRadius:9,padding:"7px 2px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                    {m.l}
+                      border:`1px solid ${goalMode===m.k?m.c:T.border}`,borderRadius:9,padding:"7px 2px",fontSize:10,fontWeight:700,cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                    <span>{m.l}</span>
+                    <span style={{fontSize:13,fontWeight:900}}>{m.v}</span>
                   </button>
                 ))}
               </div>
@@ -959,6 +994,52 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
                 <div style={{fontSize:11,fontWeight:700,color:T.text,marginBottom:10}}>🥅 Mapa del Arco</div>
                 <GoalMap byQ={byQ} mode={goalMode}/>
               </Card>
+            </div>
+          )}
+          {mainTab==="keeper"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:11,color:T.muted,marginBottom:4}}>Rendimiento de arqueros frente a tiros recibidos</div>
+              {goalkeeperMap.length===0?(
+                <div style={{textAlign:"center",padding:"30px",color:T.muted}}>
+                  <div style={{fontSize:28,marginBottom:8}}>🧤</div>
+                  <div style={{fontSize:12}}>Sin datos de arquero</div>
+                </div>
+              ):goalkeeperMap.map((gk,i)=>{
+                const pct=gk.total?Math.round(gk.saved/gk.total*100):0;
+                const barW=gk.total?`${gk.goals/gk.total*100}%`:"0%";
+                return(
+                  <Card key={gk.name}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{width:40,height:40,borderRadius:"50%",background:"#60a5fa22",border:"2px solid #60a5fa44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <span style={{fontSize:11,fontWeight:800,color:"#60a5fa"}}>#{gk.number||"?"}</span>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:14,fontWeight:700,color:T.text}}>{gk.name}</span>
+                          {i===0&&<span style={{fontSize:12}}>🥇</span>}
+                        </div>
+                        <div style={{fontSize:11,color:T.muted}}>{gk.total} tiros recibidos · {pct}% atajados</div>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:22,fontWeight:900,color:"#60a5fa"}}>{pct}%</div>
+                        <div style={{fontSize:9,color:T.muted}}>efectividad</div>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:5,marginBottom:6}}>
+                      {[{l:"Atajadas",v:gk.saved,c:"#60a5fa"},{l:"Goles rec.",v:gk.goals,c:T.red},{l:"Errados",v:gk.miss,c:T.muted}].map(x=>(
+                        <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:8,padding:"6px 0",background:x.c+"12",border:`1px solid ${x.c}28`}}>
+                          <div style={{fontSize:16,fontWeight:800,color:x.c}}>{x.v}</div>
+                          <div style={{fontSize:9,color:T.muted}}>{x.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{height:6,borderRadius:3,overflow:"hidden",background:T.border,display:"flex"}}>
+                      <div style={{width:`${gk.total?gk.saved/gk.total*100:0}%`,background:"#60a5fa"}}/>
+                      <div style={{width:barW,background:T.red}}/>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
           {mainTab==="players"&&(
