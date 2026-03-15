@@ -1274,6 +1274,122 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
             </div>
           )}
         </>
+      ):(
+        /* Vista temporada con shots — usar tabs del season selector */
+        <>
+          {mainTab==="court"&&<StatsCourt shots={seasonShots.length>0?seasonShots:shots}/>}
+          {mainTab==="goal"&&(
+            <div>
+              <div style={{display:"flex",gap:6,marginBottom:10}}>
+                {[{k:"goals",l:"⚽ Goles",c:T.green,v:totals.goals},{k:"saved",l:"🧤 Ataj.",c:"#60a5fa",v:totals.saved},{k:"miss",l:"❌ Err.",c:T.red,v:totals.miss},{k:"total",l:"📊 Total",c:T.yellow,v:totals.total}].map(m=>(
+                  <button key={m.k} onClick={()=>setGoalMode(m.k)}
+                    style={{flex:1,background:goalMode===m.k?m.c+"28":T.card,color:goalMode===m.k?m.c:T.muted,
+                      border:`1px solid ${goalMode===m.k?m.c:T.border}`,borderRadius:9,padding:"7px 2px",fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                    <span>{m.l}</span><span style={{fontSize:13,fontWeight:900}}>{m.v}</span>
+                  </button>
+                ))}
+              </div>
+              <Card><div style={{fontSize:11,fontWeight:700,color:T.text,marginBottom:10}}>🥅 Mapa del Arco</div><GoalMap byQ={byQ} mode={goalMode}/></Card>
+            </div>
+          )}
+          {mainTab==="players"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {playerMap.map((p,i)=>{
+                const tot=p.goals+p.saved+p.miss,pct2=tot?Math.round(p.goals/tot*100):0;
+                return(<Card key={p.player}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{width:34,height:34,borderRadius:"50%",background:T.accent+"22",border:`2px solid ${T.accent}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <span style={{fontSize:11,fontWeight:800,color:T.accent}}>#{p.number||"?"}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{fontSize:13,fontWeight:700,color:T.text}}>{p.player}</span>
+                        {i<3&&<span style={{fontSize:13}}>{medals[i]}</span>}
+                      </div>
+                      <div style={{fontSize:10,color:T.muted}}>{tot} tiros · {pct2}% conv.</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:5,marginBottom:5}}>
+                    {[{l:"⚽",v:p.goals,c:T.green},{l:"🧤",v:p.saved,c:"#60a5fa"},{l:"❌",v:p.miss,c:T.red}].map(x=>(
+                      <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:8,padding:"5px 0",background:x.c+"12",border:`1px solid ${x.c}28`}}>
+                        <div style={{fontSize:16,fontWeight:800,color:x.c}}>{x.v}</div>
+                        <div style={{fontSize:9,color:T.muted}}>{x.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{height:4,borderRadius:2,display:"flex",overflow:"hidden",background:T.border}}>
+                    <div style={{width:`${tot?p.goals/tot*100:0}%`,background:T.green}}/>
+                    <div style={{width:`${tot?p.saved/tot*100:0}%`,background:"#60a5fa"}}/>
+                    <div style={{width:`${tot?p.miss/tot*100:0}%`,background:T.red}}/>
+                  </div>
+                </Card>);
+              })}
+            </div>
+          )}
+          {mainTab==="keeper"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {goalkeeperMap.length===0
+                ?<div style={{textAlign:"center",padding:"30px",color:T.muted}}><div style={{fontSize:28,marginBottom:8}}>🧤</div><div style={{fontSize:12}}>Sin datos de arquero</div></div>
+                :goalkeeperMap.map((gk,i)=>{
+                  const pct=gk.total?Math.round(gk.saved/gk.total*100):0;
+                  return(<Card key={gk.name}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{width:40,height:40,borderRadius:"50%",background:"#60a5fa22",border:"2px solid #60a5fa44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <span style={{fontSize:11,fontWeight:800,color:"#60a5fa"}}>#{gk.number||"?"}</span>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:14,fontWeight:700,color:T.text}}>{gk.name}</span>{i===0&&<span>🥇</span>}</div>
+                        <div style={{fontSize:11,color:T.muted}}>{gk.total} tiros · {pct}% atajados</div>
+                      </div>
+                      <div style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:900,color:"#60a5fa"}}>{pct}%</div><div style={{fontSize:9,color:T.muted}}>efectividad</div></div>
+                    </div>
+                    <div style={{display:"flex",gap:5,marginBottom:5}}>
+                      {[{l:"Atajadas",v:gk.saved,c:"#60a5fa"},{l:"Goles rec.",v:gk.goals,c:T.red},{l:"Errados",v:gk.miss,c:T.muted}].map(x=>(
+                        <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:8,padding:"6px 0",background:x.c+"12",border:`1px solid ${x.c}28`}}>
+                          <div style={{fontSize:16,fontWeight:800,color:x.c}}>{x.v}</div>
+                          <div style={{fontSize:9,color:T.muted}}>{x.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{height:6,borderRadius:3,overflow:"hidden",background:T.border,display:"flex"}}>
+                      <div style={{width:`${gk.total?gk.saved/gk.total*100:0}%`,background:"#60a5fa"}}/>
+                      <div style={{width:`${gk.total?gk.goals/gk.total*100:0}%`,background:T.red}}/>
+                    </div>
+                  </Card>);
+                })
+              }
+            </div>
+          )}
+          {mainTab==="analysis"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[{items:DISTANCES,key:"distance",title:"📏 Por Distancia",color:T.accent},
+                {items:SITUATIONS,key:"situation",title:"⚖️ Por Situación",getColor:s=>s.color},
+                {items:THROW_TYPES,key:"throwType",title:"🤾 Tipo de Lanzamiento",color:T.yellow}
+              ].map(({items,key,title,color,getColor})=>{
+                const hasData=shots.some(s=>s[key]);
+                if(!hasData)return null;
+                return(<Card key={key}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:10}}>{title}</div>
+                  {items.map(item=>{
+                    const ds=shots.filter(s=>s[key]===item.k);
+                    if(!ds.length)return null;
+                    const g=ds.filter(s=>s.result==="goal").length;
+                    const pct3=Math.round(g/ds.length*100);
+                    const c=getColor?getColor(item):color;
+                    return(<div key={item.k} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                      <span style={{fontSize:13,width:20}}>{item.emoji}</span>
+                      <span style={{fontSize:11,color:T.muted,width:80,flexShrink:0}}>{item.l}</span>
+                      <div style={{flex:1,height:7,background:T.border,borderRadius:4,overflow:"hidden"}}>
+                        <div style={{width:`${pct3}%`,height:"100%",background:c,borderRadius:4}}/>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,color:c,width:50,textAlign:"right"}}>{g}/{ds.length} ({pct3}%)</span>
+                    </div>);
+                  })}
+                </Card>);
+              }).filter(Boolean)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2462,4 +2578,3 @@ export default function App(){
     </div>
   );
 }
-
