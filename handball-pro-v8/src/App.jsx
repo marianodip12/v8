@@ -854,27 +854,67 @@ function TeamsPage({teams,setTeams,onTeamUpdated}){
 // ═══════════════════════════════════════════════════
 //  STATS PAGE
 // ═══════════════════════════════════════════════════
-function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
+function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches=[],homeTeamName="GEI"}){
   const sourceEvents=matchEvents||liveEvents;
+  const isMatchView=!!matchEvents;
   const [dataMode,setDataMode]=useState("full");
-  const [mainTab,setMainTab]=useState("court");
+  const [mainTab,setMainTab]=useState(isMatchView?"court":"season");
   const [goalMode,setGoalMode]=useState("goals");
+  const [teamFilter,setTeamFilter]=useState("all");
+  const [compFilter,setCompFilter]=useState("all");
   const medals=["🥇","🥈","🥉"];
 
-  const fullShots=useMemo(()=>sourceEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null).map(e=>({
+  // Stats de temporada — todos los partidos cerrados
+  const allSeasonEvents=useMemo(()=>{
+    let evs=[];
+    completedMatches
+      .filter(m=>compFilter==="all"||m.competition===compFilter)
+      .forEach(m=>(m.events||[]).forEach(e=>evs.push({...e,matchHome:m.home,matchAway:m.away})));
+    return evs;
+  },[completedMatches,compFilter]);
+
+  const seasonShots=useMemo(()=>allSeasonEvents
+    .filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null&&e.team==="home")
+    .map(e=>({
+      zone:e.zone,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
+      player:e.shooter?.name||"?",number:e.shooter?.number||0,
+      quadrant:e.quadrant!=null?parseInt(e.quadrant):null,
+      goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
+      distance:e.distance||null,situation:e.situation||null,throwType:e.throwType||null,
+      team:e.team,
+    })),[allSeasonEvents]);
+
+  const seasonTotals=useMemo(()=>{
+    const g=allSeasonEvents.filter(e=>e.type==="goal"&&e.team==="home").length;
+    const t=allSeasonEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.team==="home").length;
+    return{goals:g,total:t,pct:t?Math.round(g/t*100):0};
+  },[allSeasonEvents]);
+
+  // Filtro de equipo para partido individual
+  const filteredSource=useMemo(()=>{
+    if(!isMatchView||teamFilter==="all")return sourceEvents;
+    return sourceEvents.filter(e=>e.team===teamFilter);
+  },[sourceEvents,teamFilter,isMatchView]);
+
+  // Extraer nombres de home/away del título
+  const matchParts=matchTitle?.match(/^(.+?)\s+\d+[–-]\d+\s+(.+)$/);
+  const homeNameInMatch=matchParts?.[1]||homeTeamName;
+  const awayNameInMatch=matchParts?.[2]||"Rival";
+
+  const fullShots=useMemo(()=>filteredSource.filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null).map(e=>({
     zone:e.zone,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
     player:e.shooter?.name||"?",number:e.shooter?.number||0,
     quadrant:e.quadrant!=null?parseInt(e.quadrant):null,
     goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
     distance:e.distance||null,situation:e.situation||null,throwType:e.throwType||null,
     team:e.team,
-  })),[sourceEvents]);
+  })),[filteredSource]);
 
-  const quickShots=useMemo(()=>sourceEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&(!e.completed||e.quickMode)).map(e=>({
+  const quickShots=useMemo(()=>filteredSource.filter(e=>["goal","miss","saved"].includes(e.type)&&(!e.completed||e.quickMode)).map(e=>({
     zone:e.zone||null,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
     player:"Sin datos",number:0,quadrant:null,team:e.team,situation:e.situation||null,
     goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
-  })),[sourceEvents]);
+  })),[filteredSource]);
 
   const shots=dataMode==="full"?fullShots:quickShots;
 
@@ -929,7 +969,118 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
         <div style={{fontSize:20,fontWeight:800,color:T.text}}>{matchTitle||"Estadísticas"}</div>
         {matchTitle&&<div style={{fontSize:11,color:T.muted,marginTop:2}}>Partido finalizado</div>}
       </div>
-      {/* Toggle registro */}
+
+      {/* Si es vista de partido: selector de equipo */}
+      {isMatchView&&(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:3,display:"flex",gap:3,marginBottom:12}}>
+          {[{k:"all",l:"⚖️ Ambos"},{k:"home",l:`🔴 ${homeNameInMatch}`},{k:"away",l:`🔵 ${awayNameInMatch}`}].map(t=>(
+            <button key={t.k} onClick={()=>setTeamFilter(t.k)}
+              style={{flex:1,background:teamFilter===t.k?T.accent:"transparent",color:teamFilter===t.k?"#fff":T.muted,
+                border:"none",borderRadius:9,padding:"7px 3px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Si NO es vista de partido: selector de temporada/competencia */}
+      {!isMatchView&&(
+        <>
+          <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+            {["all","Liga","Copa","Super 8","Amistoso"].map(c=>(
+              <button key={c} onClick={()=>setCompFilter(c)}
+                style={{background:compFilter===c?T.accent+"22":T.card,color:compFilter===c?T.accent:T.muted,
+                  border:`1px solid ${compFilter===c?T.accent:T.border}`,borderRadius:9,padding:"6px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                {c==="all"?"🏆 Todo":c}
+              </button>
+            ))}
+          </div>
+          {/* KPIs de temporada */}
+          <div style={{display:"flex",gap:5,marginBottom:12}}>
+            {[
+              {l:"Partidos",v:completedMatches.filter(m=>compFilter==="all"||m.competition===compFilter).length,c:T.text},
+              {l:"Goles",   v:seasonTotals.goals, c:T.green},
+              {l:"Conv.",   v:`${seasonTotals.pct}%`,c:seasonTotals.pct>=60?T.green:T.yellow},
+              {l:"Tiros",   v:seasonTotals.total, c:T.text},
+            ].map(k=>(
+              <div key={k.l} style={{flex:1,background:T.card,borderRadius:9,padding:"8px 3px",border:`1px solid ${T.border}`,textAlign:"center"}}>
+                <div style={{fontSize:15,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
+                <div style={{fontSize:8,color:T.muted,marginTop:2}}>{k.l}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Tab selector */}
+      {!isMatchView&&(
+        <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+          {[{k:"season",l:"📈 Temporada"},{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}].map(t=>(
+            <button key={t.k} onClick={()=>setMainTab(t.k)}
+              style={{flex:1,minWidth:"28%",background:mainTab===t.k?T.accent:T.card,color:mainTab===t.k?"#fff":T.muted,
+                border:`1px solid ${mainTab===t.k?T.accent:T.border}`,borderRadius:9,padding:"7px 3px",fontSize:9,fontWeight:700,cursor:"pointer"}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Season overview tab */}
+      {mainTab==="season"&&!isMatchView&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {/* Resultados recientes */}
+          <Card>
+            <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:10}}>📅 Últimos partidos</div>
+            {completedMatches.filter(m=>compFilter==="all"||m.competition===compFilter).slice(0,8).map(m=>{
+              const isHome=m.home===homeTeamName;
+              const myG=isHome?m.hs:m.as, oppG=isHome?m.as:m.hs;
+              const res=myG>oppG?"W":myG===oppG?"D":"L";
+              const resCol=res==="W"?T.green:res==="D"?T.yellow:T.red;
+              const rival=isHome?m.away:m.home;
+              return(
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,paddingBottom:7,marginBottom:7,borderBottom:`1px solid ${T.border}`}}>
+                  <div style={{width:24,height:24,borderRadius:"50%",background:resCol+"22",border:`1.5px solid ${resCol}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontSize:9,fontWeight:800,color:resCol}}>{res}</span>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.text}}>vs {rival}</div>
+                    <div style={{fontSize:9,color:T.muted}}>{m.date} · {m.competition}</div>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:900,color:T.text}}>{myG}–{oppG}</div>
+                </div>
+              );
+            })}
+            {completedMatches.length===0&&<div style={{textAlign:"center",color:T.muted,fontSize:11,padding:"10px 0"}}>Sin partidos aún</div>}
+          </Card>
+          {/* Top goleadores de temporada */}
+          {seasonShots.length>0&&(()=>{
+            const pm={};
+            seasonShots.filter(s=>s.result==="goal").forEach(s=>{
+              if(!pm[s.player])pm[s.player]={player:s.player,number:s.number,goals:0};
+              pm[s.player].goals++;
+            });
+            const top=Object.values(pm).sort((a,b)=>b.goals-a.goals).slice(0,5);
+            return(
+              <Card>
+                <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:10}}>⚽ Goleadores de temporada</div>
+                {top.map((p,i)=>(
+                  <div key={p.player} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                    <span style={{fontSize:14,width:20}}>{["🥇","🥈","🥉","4","5"][i]}</span>
+                    <span style={{fontSize:11,color:T.text,flex:1}}>#{p.number} {p.player}</span>
+                    <span style={{fontSize:14,fontWeight:800,color:T.green}}>{p.goals}</span>
+                  </div>
+                ))}
+              </Card>
+            );
+          })()}
+          {seasonShots.length===0&&(
+            <div style={{textAlign:"center",padding:"20px",color:T.muted}}>
+              <div style={{fontSize:28,marginBottom:6}}>📊</div>
+              <div style={{fontSize:12}}>Sin estadísticas de temporada aún</div>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:3,display:"flex",gap:3,marginBottom:12}}>
         <button onClick={()=>setDataMode("full")}
           style={{flex:1,background:dataMode==="full"?T.accent:"transparent",color:dataMode==="full"?"#fff":T.muted,
@@ -957,7 +1108,7 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack}){
           <div style={{fontSize:32,marginBottom:8}}>{dataMode==="full"?"📋":"⚡"}</div>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Sin datos de {dataMode==="full"?"registro completo":"registro rápido"}</div>
         </div>
-      ):(
+      ):isMatchView?(
         <>
           <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
             {(dataMode==="full"
@@ -2233,7 +2384,7 @@ export default function App(){
       </div>
     );
     if(showEvo)return <EvolutionPage match={evoMatch} goBack={()=>{setShowEvo(false);setEvoMatch(null);}}/>;
-    if(statsMatch)return <StatsPage matchEvents={statsMatch.events||[]} matchTitle={`${statsMatch.home} ${statsMatch.hs}–${statsMatch.as} ${statsMatch.away}`} onBack={()=>setStatsMatch(null)}/>;
+    if(statsMatch)return <StatsPage matchEvents={statsMatch.events||[]} matchTitle={`${statsMatch.home} ${statsMatch.hs}–${statsMatch.as} ${statsMatch.away}`} onBack={()=>setStatsMatch(null)} homeTeamName={homeTeam?.name||"GEI"}/>;
     switch(tab){
       case "matches":  return <MatchesPage
         matchStatus={matchStatus} liveMatchInfo={liveMatchInfo} liveScore={liveScore}
@@ -2250,7 +2401,7 @@ export default function App(){
         persistEvent={persistEvent} updatePersistedEvent={updatePersistedEvent}
         homeTeam={homeTeam} awayTeamName={liveMatchInfo.away} awayPlayers={awayPlayers}
       />;
-      case "stats":    return <StatsPage liveEvents={liveEvents}/>;
+      case "stats":    return <StatsPage liveEvents={liveEvents} completedMatches={completedMatches} homeTeamName={homeTeam?.name||"GEI"}/>;
       case "ai":       return <AIPage liveEvents={liveEvents} liveMatchInfo={liveMatchInfo} completedMatches={completedMatches}/>;
       default:         return null;
     }
@@ -2311,3 +2462,4 @@ export default function App(){
     </div>
   );
 }
+
