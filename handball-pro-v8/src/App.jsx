@@ -862,6 +862,8 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
   const [goalMode,setGoalMode]=useState("goals");
   const [teamFilter,setTeamFilter]=useState("home");
   const [compFilter,setCompFilter]=useState("all");
+  const [qTeam,setQTeam]=useState("home");
+  const [qSelZone,setQSelZone]=useState(null);
   const medals=["🥇","🥈","🥉"];
 
   // Stats de temporada — todos los partidos cerrados
@@ -1128,16 +1130,30 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
       </div>
       {dataMode==="quick"&&(()=>{
         const QuickSideAnalysis=()=>{
-        // ── ANÁLISIS POR LADO Y ZONA ──────────────────────────────────────
         const sides=["left","right"];
-        const teams=["home","away"];
         const sideLabel=s=>s==="left"?"◀ Izquierda":"▶ Derecha";
         const sideIcon=s=>s==="left"?"◀":"▶";
         const sideColor=s=>s==="left"?"#06b6d4":"#f59e0b";
         const teamLabel=t=>t==="home"?(matchTitle?matchTitle.split(" ")[0]:homeTeamName):"Rival";
         const teamColor=t=>t==="home"?T.accent:"#64748b";
         const [qTeam,setQTeam]=useState("home");
+        const [qSelZone,setQSelZone]=useState(null);
 
+        // Zonas del equipo filtrado globalmente
+        const qWithZone=quickShots.filter(s=>s.zone);
+        const qZoneStats=Object.keys(ZONES).reduce((a,k)=>{
+          const zs=qWithZone.filter(s=>s.zone===k);
+          a[k]={goals:zs.filter(s=>s.result==="goal").length,saved:zs.filter(s=>s.result==="saved").length,miss:zs.filter(s=>s.result==="miss").length,total:zs.length};
+          return a;
+        },{});
+        const qMaxVal=Math.max(...Object.values(qZoneStats).map(z=>z.total),1);
+        const qHeatFill=k=>{
+          const v=qZoneStats[k]?.total||0;
+          if(!v)return "rgba(255,255,255,0.04)";
+          return `rgba(59,130,246,${0.15+v/qMaxVal*0.55})`;
+        };
+
+        // Por lado (usa equipo seleccionado en qTeam)
         const sideZoneStats=(team)=>{
           const evs=quickShots.filter(s=>s.team===team&&s.attackSide);
           const result={};
@@ -1161,35 +1177,19 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
           return result;
         };
 
-        const hasData=quickShots.length>0;
-        if(!hasData) return(
+        if(quickShots.length===0) return(
           <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.3)",borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:11,color:T.yellow}}>
             ⚡ Sin datos de modo rápido registrados.
           </div>
         );
 
-        // Zonas del modo rápido del equipo ya filtrado
-        const qWithZone=quickShots.filter(s=>s.zone);
-        const qZoneStats=Object.keys(ZONES).reduce((a,k)=>{
-          const zs=qWithZone.filter(s=>s.zone===k);
-          a[k]={goals:zs.filter(s=>s.result==="goal").length,saved:zs.filter(s=>s.result==="saved").length,miss:zs.filter(s=>s.result==="miss").length,total:zs.length};
-          return a;
-        },{});
-        const qMaxVal=Math.max(...Object.values(qZoneStats).map(z=>z.total),1);
-        const qHeatFill=k=>{
-          const v=qZoneStats[k]?.total||0;
-          if(!v)return "rgba(255,255,255,0.04)";
-          return `rgba(59,130,246,${0.15+v/qMaxVal*0.55})`;
-        };
-        const [qSelZone,setQSelZone]=useState(null);
-
-        const stats=sideZoneStats(qTeam);
-        const maxTotal=Math.max(stats.left.total,stats.right.total,1);
         const hasSides=quickShots.some(s=>s.attackSide);
+        const sideStats=hasSides?sideZoneStats(qTeam):null;
+        const maxTotal=sideStats?Math.max(sideStats.left.total,sideStats.right.total,1):1;
 
         return(
           <div>
-            {/* KPIs rápido */}
+            {/* KPIs */}
             <div style={{display:"flex",gap:5,marginBottom:10}}>
               {[
                 {l:"Tiros",v:quickShots.length,c:T.text},
@@ -1205,10 +1205,10 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
               ))}
             </div>
 
-            {/* Heatmap de zonas si hay datos */}
+            {/* Heatmap zonas */}
             {qWithZone.length>0&&(
               <div style={{marginBottom:12}}>
-                <div style={{fontSize:10,color:T.yellow,fontWeight:700,marginBottom:6}}>⚡ Zonas registradas en modo rápido</div>
+                <div style={{fontSize:10,color:T.yellow,fontWeight:700,marginBottom:6}}>⚡ Zonas en modo rápido</div>
                 <div style={{background:"#0f2a5a",borderRadius:12,padding:"8px 4px",border:"1px solid #1e407a",marginBottom:8}}>
                   <svg viewBox="-8 -28 296 190" width="100%" preserveAspectRatio="xMidYMid meet" style={{display:"block",maxWidth:360,margin:"0 auto"}}>
                     <rect x="-8" y="-28" width="296" height="190" fill="#0f2a5a" rx="8"/>
@@ -1231,7 +1231,7 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
                             style={{fontSize:9,fill:"rgba(255,255,255,.7)",fontWeight:700,pointerEvents:"none"}}>
                             {zone.short}
                           </text>
-                          {st?.total>0&&(
+                          {st?.goals>0&&(
                             <text x={zone.lx} y={zone.ly+8} textAnchor="middle"
                               style={{fontSize:11,fill:T.green,fontWeight:900,pointerEvents:"none"}}>
                               {st.goals}
@@ -1242,10 +1242,8 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
                     })}
                   </svg>
                 </div>
-                {/* Detalle por zona */}
                 {Object.entries(qZoneStats).filter(([,s])=>s.total>0).sort(([,a],[,b])=>b.total-a.total).map(([key,st])=>(
-                  <div key={key} style={{background:T.card,borderRadius:10,padding:"9px 11px",marginBottom:6,
-                    borderLeft:`3px solid ${ZONES[key]?.color||T.muted}`}}>
+                  <div key={key} style={{background:T.card,borderRadius:10,padding:"9px 11px",marginBottom:6,borderLeft:`3px solid ${ZONES[key]?.color||T.muted}`}}>
                     <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
                       <span style={{fontSize:11,fontWeight:700,color:ZONES[key]?.color||T.muted,flex:1}}>{ZONES[key]?.label}</span>
                       <span style={{fontSize:10,color:T.muted}}>{st.total} tiros</span>
@@ -1268,108 +1266,110 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
               </div>
             )}
 
-            {/* Análisis por lado si hay attackSide */}
-            {hasSides&&(
+            {/* Por lado */}
+            {hasSides&&sideStats&&(
               <div>
                 <div style={{fontSize:10,color:T.yellow,fontWeight:700,marginBottom:6}}>⚡ Por lado de ataque</div>
-            </div>
-            {/* Side summary cards */}
-            <div style={{display:"flex",gap:8,marginBottom:12}}>
-              {sides.map(s=>{
-                const st=stats[s];
-                const sc=sideColor(s);
-                const pct2=st.total?Math.round(st.goals/st.total*100):0;
-                return(
-                  <div key={s} style={{flex:1,background:T.card,borderRadius:13,border:`1.5px solid ${sc}44`,padding:"11px 10px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
-                      <span style={{fontSize:16,color:sc}}>{sideIcon(s)}</span>
-                      <span style={{fontSize:12,fontWeight:800,color:sc}}>{sideLabel(s)}</span>
-                    </div>
-                    <div style={{display:"flex",gap:4,marginBottom:8}}>
-                      {[{l:"Tiros",v:st.total,c:T.text},{l:"Goles",v:st.goals,c:T.green},{l:"Conv.",v:`${pct2}%`,c:pct2>=60?T.green:T.yellow},{l:"Ataj.",v:st.saved,c:"#60a5fa"},{l:"Err.",v:st.miss,c:T.red}].map(k=>(
-                        <div key={k.l} style={{flex:1,background:T.card2,borderRadius:7,padding:"4px 2px",textAlign:"center"}}>
-                          <div style={{fontSize:12,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
-                          <div style={{fontSize:7,color:T.muted,marginTop:1}}>{k.l}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden"}}>
-                      <div style={{width:`${maxTotal?st.total/maxTotal*100:0}%`,height:"100%",background:sc}}/>
-                    </div>
-                    <div style={{fontSize:9,color:T.muted,marginTop:3,textAlign:"center"}}>
-                      {Math.round(maxTotal?st.total/maxTotal*100:0)}% del total por este lado
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Por zona en cada lado */}
-            {sides.map(s=>{
-              const st=stats[s];
-              const sc=sideColor(s);
-              const allZones=Object.entries(st.byZone).sort(([,a],[,b])=>b.total-a.total);
-              if(st.total===0) return null;
-              return(
-                <Card key={s} style={{marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-                    <span style={{fontSize:14,color:sc}}>{sideIcon(s)}</span>
-                    <span style={{fontSize:12,fontWeight:700,color:sc}}>{sideLabel(s)} — por zona</span>
-                    <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                      <span style={{fontSize:11,fontWeight:700,color:T.green}}>{st.goals}⚽</span>
-                      <span style={{fontSize:11,color:"#60a5fa"}}>{st.saved}🧤</span>
-                      <span style={{fontSize:11,color:T.red}}>{st.miss}❌</span>
-                    </div>
-                  </div>
-                  {allZones.map(([zk,zs])=>{
-                    const zc=ZONES[zk]?.color||T.muted;
-                    const zpct=zs.total?Math.round(zs.goals/zs.total*100):0;
+                <div style={{background:T.card,borderRadius:11,padding:3,display:"flex",gap:3,marginBottom:10}}>
+                  {["home","away"].map(t=>(
+                    <button key={t} onClick={()=>setQTeam(t)}
+                      style={{flex:1,background:qTeam===t?teamColor(t):"transparent",color:qTeam===t?"#fff":T.muted,
+                        border:"none",borderRadius:8,padding:"7px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      {t==="home"?"⚔️":"🛡️"} {teamLabel(t)}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:12}}>
+                  {sides.map(s=>{
+                    const st=sideStats[s];
+                    const sc=sideColor(s);
+                    const pct2=st.total?Math.round(st.goals/st.total*100):0;
                     return(
-                      <div key={zk} style={{marginBottom:8,background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${zc}`}}>
-                        <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-                          <span style={{fontSize:11,fontWeight:700,color:zc,flex:1}}>{ZONES[zk]?.label}</span>
-                          <span style={{fontSize:10,color:T.muted}}>{zs.total} tiros · {zpct}% conv.</span>
+                      <div key={s} style={{flex:1,background:T.card,borderRadius:13,border:`1.5px solid ${sc}44`,padding:"11px 10px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
+                          <span style={{fontSize:16,color:sc}}>{sideIcon(s)}</span>
+                          <span style={{fontSize:12,fontWeight:800,color:sc}}>{sideLabel(s)}</span>
                         </div>
-                        <div style={{display:"flex",gap:5,marginBottom:5}}>
-                          {[{l:"Goles",v:zs.goals,c:T.green},{l:"Atajadas",v:zs.saved,c:"#60a5fa"},{l:"Errados",v:zs.miss,c:T.red}].map(x=>(
-                            <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0",border:`1px solid ${x.c}22`}}>
-                              <div style={{fontSize:16,fontWeight:900,color:x.c}}>{x.v}</div>
-                              <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
+                        <div style={{display:"flex",gap:4,marginBottom:8}}>
+                          {[{l:"Tiros",v:st.total,c:T.text},{l:"Goles",v:st.goals,c:T.green},{l:"Conv.",v:`${pct2}%`,c:pct2>=60?T.green:T.yellow},{l:"Ataj.",v:st.saved,c:"#60a5fa"},{l:"Err.",v:st.miss,c:T.red}].map(k=>(
+                            <div key={k.l} style={{flex:1,background:T.card2,borderRadius:7,padding:"4px 2px",textAlign:"center"}}>
+                              <div style={{fontSize:12,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
+                              <div style={{fontSize:7,color:T.muted,marginTop:1}}>{k.l}</div>
                             </div>
                           ))}
                         </div>
-                        <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden",display:"flex"}}>
-                          <div style={{width:`${zs.total?zs.goals/zs.total*100:0}%`,background:T.green}}/>
-                          <div style={{width:`${zs.total?zs.saved/zs.total*100:0}%`,background:"#60a5fa"}}/>
-                          <div style={{width:`${zs.total?zs.miss/zs.total*100:0}%`,background:T.red}}/>
+                        <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden"}}>
+                          <div style={{width:`${maxTotal?st.total/maxTotal*100:0}%`,height:"100%",background:sc}}/>
                         </div>
                       </div>
                     );
                   })}
-                  {st.noZone.total>0&&(
-                    <div style={{background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${T.muted}`}}>
-                      <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-                        <span style={{fontSize:11,fontWeight:700,color:T.muted,flex:1}}>Sin zona registrada</span>
-                        <span style={{fontSize:10,color:T.muted}}>{st.noZone.total} tiros</span>
+                </div>
+                {sides.map(s=>{
+                  const st=sideStats[s];
+                  const sc=sideColor(s);
+                  const allZones=Object.entries(st.byZone).sort(([,a],[,b])=>b.total-a.total);
+                  if(st.total===0) return null;
+                  return(
+                    <Card key={s} style={{marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+                        <span style={{fontSize:14,color:sc}}>{sideIcon(s)}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:sc}}>{sideLabel(s)} — por zona</span>
+                        <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                          <span style={{fontSize:11,fontWeight:700,color:T.green}}>{st.goals}⚽</span>
+                          <span style={{fontSize:11,color:"#60a5fa"}}>{st.saved}🧤</span>
+                          <span style={{fontSize:11,color:T.red}}>{st.miss}❌</span>
+                        </div>
                       </div>
-                      <div style={{display:"flex",gap:5}}>
-                        {[{l:"Goles",v:st.noZone.goals,c:T.green},{l:"Ataj.",v:st.noZone.saved,c:"#60a5fa"},{l:"Err.",v:st.noZone.miss,c:T.red}].map(x=>(
-                          <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0"}}>
-                            <div style={{fontSize:15,fontWeight:800,color:x.c}}>{x.v}</div>
-                            <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
+                      {allZones.map(([zk,zs])=>{
+                        const zc=ZONES[zk]?.color||T.muted;
+                        const zpct=zs.total?Math.round(zs.goals/zs.total*100):0;
+                        return(
+                          <div key={zk} style={{marginBottom:8,background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${zc}`}}>
+                            <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+                              <span style={{fontSize:11,fontWeight:700,color:zc,flex:1}}>{ZONES[zk]?.label}</span>
+                              <span style={{fontSize:10,color:T.muted}}>{zs.total} tiros · {zpct}% conv.</span>
+                            </div>
+                            <div style={{display:"flex",gap:5,marginBottom:5}}>
+                              {[{l:"Goles",v:zs.goals,c:T.green},{l:"Ataj.",v:zs.saved,c:"#60a5fa"},{l:"Err.",v:zs.miss,c:T.red}].map(x=>(
+                                <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0"}}>
+                                  <div style={{fontSize:16,fontWeight:900,color:x.c}}>{x.v}</div>
+                                  <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden",display:"flex"}}>
+                              <div style={{width:`${zs.total?zs.goals/zs.total*100:0}%`,background:T.green}}/>
+                              <div style={{width:`${zs.total?zs.saved/zs.total*100:0}%`,background:"#60a5fa"}}/>
+                              <div style={{width:`${zs.total?zs.miss/zs.total*100:0}%`,background:T.red}}/>
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                        );
+                      })}
+                      {st.noZone.total>0&&(
+                        <div style={{background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${T.muted}`}}>
+                          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontSize:11,fontWeight:700,color:T.muted,flex:1}}>Sin zona registrada</span>
+                            <span style={{fontSize:10,color:T.muted}}>{st.noZone.total} tiros</span>
+                          </div>
+                          <div style={{display:"flex",gap:5}}>
+                            {[{l:"Goles",v:st.noZone.goals,c:T.green},{l:"Ataj.",v:st.noZone.saved,c:"#60a5fa"},{l:"Err.",v:st.noZone.miss,c:T.red}].map(x=>(
+                              <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0"}}>
+                                <div style={{fontSize:15,fontWeight:800,color:x.c}}>{x.v}</div>
+                                <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );};
-        return <QuickSideAnalysis/>;
-      })()}
+        return <QuickSideAnalysis/>;      })()}
       {/* KPIs */}
       <div style={{display:"flex",gap:5,marginBottom:12}}>
         {[{l:"Tiros",v:totals.total,c:T.text},{l:"Goles",v:totals.goals,c:T.green},{l:"Conv.",v:`${pct}%`,c:pct>=50?T.green:T.yellow},{l:"Ataj.",v:totals.saved,c:"#60a5fa"},{l:"Err.",v:totals.miss,c:T.red}].map(k=>(
