@@ -273,7 +273,6 @@ function EventCard({ev,homeColor,awayColor,homeName,awayName,onDelete}){
           {ev.situation&&ev.situation!=="igualdad"&&<Badge label={SITUATIONS.find(s=>s.k===ev.situation)?.l||ev.situation} color={T.muted}/>}
           {ev.throwType&&<Badge label={THROW_TYPES.find(t=>t.k===ev.throwType)?.l||ev.throwType} color={T.yellow}/>}
           {ev.quadrant!=null&&<Badge label={`Cuad: ${QUADRANTS[ev.quadrant]?.label}`} color={T.muted}/>}
-          {ev.attackSide&&<Badge label={ev.attackSide==="right"?"→ Ataca Der.":"← Ataca Izq."} color={T.muted}/>}
         </div>
       )}
     </div>
@@ -888,8 +887,6 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
   const [goalMode,setGoalMode]=useState("goals");
   const [teamFilter,setTeamFilter]=useState("home");
   const [compFilter,setCompFilter]=useState("all");
-  const [qTeam,setQTeam]=useState("home");
-  const [qSelZone,setQSelZone]=useState(null);
   const medals=["🥇","🥈","🥉"];
 
   // Stats de temporada — todos los partidos cerrados
@@ -902,7 +899,7 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
   },[completedMatches,compFilter]);
 
   const seasonShots=useMemo(()=>allSeasonEvents
-    .filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null&&e.team==="home")
+    .filter(e=>["goal","miss","saved"].includes(e.type)&&e.completed&&e.zone!=null&&e.team===teamFilter)
     .map(e=>({
       zone:e.zone,result:e.type==="goal"?"goal":e.type==="saved"?"saved":"miss",
       player:e.shooter?.name||"?",number:e.shooter?.number||0,
@@ -910,19 +907,18 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
       goalkeeper:e.goalkeeper?.name||null,goalkeeperNumber:e.goalkeeper?.number||null,
       distance:e.distance||null,situation:e.situation||null,throwType:e.throwType||null,
       team:e.team,
-    })),[allSeasonEvents]);
+    })),[allSeasonEvents,teamFilter]);
 
   const seasonTotals=useMemo(()=>{
-    const g=allSeasonEvents.filter(e=>e.type==="goal"&&e.team==="home").length;
-    const t=allSeasonEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.team==="home").length;
+    const g=allSeasonEvents.filter(e=>e.type==="goal"&&e.team===teamFilter).length;
+    const t=allSeasonEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.team===teamFilter).length;
     return{goals:g,total:t,pct:t?Math.round(g/t*100):0};
-  },[allSeasonEvents]);
+  },[allSeasonEvents,teamFilter]);
 
-  // Filtro de equipo para partido individual
+  // Filtro de equipo — aplica tanto en partido individual como en temporada
   const filteredSource=useMemo(()=>{
-    if(!isMatchView)return sourceEvents;
     return sourceEvents.filter(e=>e.team===teamFilter);
-  },[sourceEvents,teamFilter,isMatchView]);
+  },[sourceEvents,teamFilter]);
 
   // Extraer nombres de home/away del título
   const matchParts=matchTitle?.match(/^(.+?)\s+\d+[–-]\d+\s+(.+)$/);
@@ -949,33 +945,7 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
     distance:e.distance||null,throwType:e.throwType||null,
   })),[filteredSource]);
 
-  // Análisis por lado — usa TODOS los eventos con attackSide
-  const sideStats=useMemo(()=>{
-    const all=filteredSource.filter(e=>["goal","miss","saved"].includes(e.type)&&e.attackSide);
-    const build=(team,side)=>{
-      const evs=all.filter(e=>e.team===team&&e.attackSide===side);
-      const g=evs.filter(e=>e.type==="goal").length;
-      const s=evs.filter(e=>e.type==="saved").length;
-      const m=evs.filter(e=>e.type==="miss").length;
-      const t=evs.length;
-      const byZone={};
-      evs.forEach(e=>{
-        const z=e.zone||"sin_zona";
-        if(!byZone[z])byZone[z]={zone:z,goals:0,saved:0,miss:0,total:0};
-        byZone[z].total++;
-        if(e.type==="goal")byZone[z].goals++;
-        else if(e.type==="saved")byZone[z].saved++;
-        else byZone[z].miss++;
-      });
-      return{goals:g,saved:s,miss:m,total:t,pct:t?Math.round(g/t*100):0,
-        byZone:Object.values(byZone).sort((a,b)=>b.total-a.total)};
-    };
-    return{
-      home:{left:build("home","left"),right:build("home","right")},
-      away:{left:build("away","left"),right:build("away","right")},
-      hasData:all.length>0,
-    };
-  },[filteredSource]);
+
 
   const shots=dataMode==="full"?fullShots:quickShots;
 
@@ -1084,14 +1054,17 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
         {matchTitle&&<div style={{fontSize:11,color:T.muted,marginTop:2}}>Partido finalizado</div>}
       </div>
 
-      {/* Si es vista de partido: selector de equipo — sin Ambos */}
+      {/* Selector de perspectiva — Mi equipo / Rival */}
       {isMatchView&&(
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:3,display:"flex",gap:3,marginBottom:12}}>
-          {[{k:"home",l:`🔴 ${homeNameInMatch}`},{k:"away",l:`🔵 ${awayNameInMatch}`}].map(t=>(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:4,display:"flex",gap:4,marginBottom:14}}>
+          {[{k:"home",emoji:"🟢",l:homeNameInMatch||"Mi equipo",color:T.green},{k:"away",emoji:"🔴",l:awayNameInMatch||"Rival",color:T.red}].map(t=>(
             <button key={t.k} onClick={()=>setTeamFilter(t.k)}
-              style={{flex:1,background:teamFilter===t.k?T.accent:"transparent",color:teamFilter===t.k?"#fff":T.muted,
-                border:"none",borderRadius:9,padding:"7px 3px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
-              {t.l}
+              style={{flex:1,background:teamFilter===t.k?t.color+"22":"transparent",
+                color:teamFilter===t.k?t.color:T.muted,
+                border:`1.5px solid ${teamFilter===t.k?t.color:T.border}`,
+                borderRadius:10,padding:"9px 4px",fontSize:11,fontWeight:800,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all .15s"}}>
+              <span style={{fontSize:14}}>{t.emoji}</span> {t.l}
             </button>
           ))}
         </div>
@@ -1100,6 +1073,19 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
       {/* Si NO es vista de partido: selector de temporada/competencia */}
       {!isMatchView&&(
         <>
+          {/* Toggle de perspectiva — también en temporada */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:4,display:"flex",gap:4,marginBottom:12}}>
+            {[{k:"home",emoji:"🟢",l:`${homeTeamName||"Mi equipo"}`,color:T.green},{k:"away",emoji:"🔴",l:"Rival",color:T.red}].map(t=>(
+              <button key={t.k} onClick={()=>setTeamFilter(t.k)}
+                style={{flex:1,background:teamFilter===t.k?t.color+"22":"transparent",
+                  color:teamFilter===t.k?t.color:T.muted,
+                  border:`1.5px solid ${teamFilter===t.k?t.color:T.border}`,
+                  borderRadius:10,padding:"9px 4px",fontSize:11,fontWeight:800,cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all .15s"}}>
+                <span style={{fontSize:14}}>{t.emoji}</span> {t.l}
+              </button>
+            ))}
+          </div>
           <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
             {["all","Liga","Copa","Super 8","Amistoso"].map(c=>(
               <button key={c} onClick={()=>setCompFilter(c)}
@@ -1129,7 +1115,7 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
       {/* Tab selector */}
       {!isMatchView&&(
         <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-          {[{k:"season",l:"📈 Temporada"},{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"sides",l:"↔️ Lados"},{k:"analysis",l:"📐 Análisis"}].map(t=>(
+          {[{k:"season",l:"📈 Temporada"},{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}].map(t=>(
             <button key={t.k} onClick={()=>setMainTab(t.k)}
               style={{flex:1,minWidth:"28%",background:mainTab===t.k?T.accent:T.card,color:mainTab===t.k?"#fff":T.muted,
                 border:`1px solid ${mainTab===t.k?T.accent:T.border}`,borderRadius:9,padding:"7px 3px",fontSize:9,fontWeight:700,cursor:"pointer"}}>
@@ -1209,10 +1195,6 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
       </div>
       {dataMode==="quick"&&(()=>{
         const QuickSideAnalysis=()=>{
-        const sides=["left","right"];
-        const sideLabel=s=>s==="left"?"◀ Izquierda":"▶ Derecha";
-        const sideIcon=s=>s==="left"?"◀":"▶";
-        const sideColor=s=>s==="left"?"#06b6d4":"#f59e0b";
         const teamLabel=t=>t==="home"?(matchTitle?matchTitle.split(" ")[0]:homeTeamName):"Rival";
         const teamColor=t=>t==="home"?T.accent:"#64748b";
         const [qTeam,setQTeam]=useState("home");
@@ -1232,62 +1214,31 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
           return `rgba(59,130,246,${0.15+v/qMaxVal*0.55})`;
         };
 
-        // Por lado (usa equipo seleccionado en qTeam)
-        const sideZoneStats=(team)=>{
-          const evs=quickShots.filter(s=>s.team===team&&s.attackSide);
-          const result={};
-          sides.forEach(side=>{
-            const se=evs.filter(s=>s.attackSide===side);
-            const byZone={};
-            Object.keys(ZONES).forEach(z=>{
-              const ze=se.filter(s=>s.zone===z);
-              if(ze.length>0) byZone[z]={goals:ze.filter(s=>s.result==="goal").length,saved:ze.filter(s=>s.result==="saved").length,miss:ze.filter(s=>s.result==="miss").length,total:ze.length};
-            });
-            const noZone=se.filter(s=>!s.zone);
-            result[side]={
-              goals:se.filter(s=>s.result==="goal").length,
-              saved:se.filter(s=>s.result==="saved").length,
-              miss:se.filter(s=>s.result==="miss").length,
-              total:se.length,
-              byZone,
-              noZone:{goals:noZone.filter(s=>s.result==="goal").length,saved:noZone.filter(s=>s.result==="saved").length,miss:noZone.filter(s=>s.result==="miss").length,total:noZone.length},
-            };
-          });
-          return result;
-        };
-
         if(quickShots.length===0) return(
           <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.3)",borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:11,color:T.yellow}}>
             ⚡ Sin datos de modo rápido registrados.
           </div>
         );
 
-        const hasSides=quickShots.some(s=>s.attackSide);
-        const sideStats=hasSides?sideZoneStats(qTeam):null;
-        const maxTotal=sideStats?Math.max(sideStats.left.total,sideStats.right.total,1):1;
-
         return(
           <div>
-            {/* KPIs */}
+            {/* KPIs rápidos */}
             <div style={{display:"flex",gap:5,marginBottom:10}}>
               {[
                 {l:"Tiros",v:quickShots.length,c:T.text},
                 {l:"Goles",v:quickShots.filter(s=>s.result==="goal").length,c:T.green},
                 {l:"Ataj.",v:quickShots.filter(s=>s.result==="saved").length,c:"#60a5fa"},
                 {l:"Err.",v:quickShots.filter(s=>s.result==="miss").length,c:T.red},
-                {l:"Con zona",v:qWithZone.length,c:T.yellow},
               ].map(k=>(
-                <div key={k.l} style={{flex:1,background:T.card,borderRadius:9,padding:"6px 2px",border:`1px solid ${T.border}`,textAlign:"center"}}>
-                  <div style={{fontSize:13,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
-                  <div style={{fontSize:7,color:T.muted,marginTop:1}}>{k.l}</div>
+                <div key={k.l} style={{flex:1,background:T.card,borderRadius:9,padding:"7px 3px",border:`1px solid ${T.border}`,textAlign:"center"}}>
+                  <div style={{fontSize:15,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
+                  <div style={{fontSize:8,color:T.muted,marginTop:2}}>{k.l}</div>
                 </div>
               ))}
             </div>
-
-            {/* Heatmap zonas */}
+            {/* Mapa de calor modo rápido */}
             {qWithZone.length>0&&(
               <div style={{marginBottom:12}}>
-                <div style={{fontSize:10,color:T.yellow,fontWeight:700,marginBottom:6}}>⚡ Zonas en modo rápido</div>
                 <div style={{background:"#0f2a5a",borderRadius:12,padding:"8px 4px",border:"1px solid #1e407a",marginBottom:8}}>
                   <svg viewBox="-8 -28 296 190" width="100%" preserveAspectRatio="xMidYMid meet" style={{display:"block",maxWidth:360,margin:"0 auto"}}>
                     <rect x="-8" y="-28" width="296" height="190" fill="#0f2a5a" rx="8"/>
@@ -1295,11 +1246,10 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
                     <path d="M 56 0 A 84 84 0 0 1 224 0 Z" fill="#1565a0"/>
                     {Object.entries(ZONES).map(([key,zone])=>(
                       <path key={key} d={zone.path}
-                        fill={qSelZone===key?zone.color+"55":qHeatFill(key)}
-                        stroke={qSelZone===key?"#fff":"rgba(255,255,255,.15)"}
-                        strokeWidth={qSelZone===key?2.5:1}
-                        style={{cursor:"pointer",transition:"all .15s"}}
-                        onClick={()=>setQSelZone(qSelZone===key?null:key)}
+                        fill={qHeatFill(key)}
+                        stroke="rgba(255,255,255,.15)"
+                        strokeWidth={1}
+                        style={{transition:"all .15s"}}
                       />
                     ))}
                     {Object.entries(ZONES).map(([key,zone])=>{
@@ -1321,144 +1271,40 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
                     })}
                   </svg>
                 </div>
-                {Object.entries(qZoneStats).filter(([,s])=>s.total>0).sort(([,a],[,b])=>b.total-a.total).map(([key,st])=>(
-                  <div key={key} style={{background:T.card,borderRadius:10,padding:"9px 11px",marginBottom:6,borderLeft:`3px solid ${ZONES[key]?.color||T.muted}`}}>
-                    <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-                      <span style={{fontSize:11,fontWeight:700,color:ZONES[key]?.color||T.muted,flex:1}}>{ZONES[key]?.label}</span>
-                      <span style={{fontSize:10,color:T.muted}}>{st.total} tiros</span>
-                    </div>
-                    <div style={{display:"flex",gap:5,marginBottom:5}}>
-                      {[{l:"⚽ Goles",v:st.goals,c:T.green},{l:"🧤 Ataj.",v:st.saved,c:"#60a5fa"},{l:"❌ Err.",v:st.miss,c:T.red}].map(x=>(
-                        <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:7,padding:"5px 0",background:x.c+"12",border:`1px solid ${x.c}22`}}>
-                          <div style={{fontSize:16,fontWeight:900,color:x.c}}>{x.v}</div>
-                          <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden",display:"flex"}}>
-                      <div style={{width:`${st.total?st.goals/st.total*100:0}%`,background:T.green}}/>
-                      <div style={{width:`${st.total?st.saved/st.total*100:0}%`,background:"#60a5fa"}}/>
-                      <div style={{width:`${st.total?st.miss/st.total*100:0}%`,background:T.red}}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Por lado */}
-            {hasSides&&sideStats&&(
-              <div>
-                <div style={{fontSize:10,color:T.yellow,fontWeight:700,marginBottom:6}}>⚡ Por lado de ataque</div>
-                <div style={{background:T.card,borderRadius:11,padding:3,display:"flex",gap:3,marginBottom:10}}>
-                  {["home","away"].map(t=>(
-                    <button key={t} onClick={()=>setQTeam(t)}
-                      style={{flex:1,background:qTeam===t?teamColor(t):"transparent",color:qTeam===t?"#fff":T.muted,
-                        border:"none",borderRadius:8,padding:"7px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                      {t==="home"?"⚔️":"🛡️"} {teamLabel(t)}
-                    </button>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:8,marginBottom:12}}>
-                  {sides.map(s=>{
-                    const st=sideStats[s];
-                    const sc=sideColor(s);
-                    const pct2=st.total?Math.round(st.goals/st.total*100):0;
-                    return(
-                      <div key={s} style={{flex:1,background:T.card,borderRadius:13,border:`1.5px solid ${sc}44`,padding:"11px 10px"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
-                          <span style={{fontSize:16,color:sc}}>{sideIcon(s)}</span>
-                          <span style={{fontSize:12,fontWeight:800,color:sc}}>{sideLabel(s)}</span>
-                        </div>
-                        <div style={{display:"flex",gap:4,marginBottom:8}}>
-                          {[{l:"Tiros",v:st.total,c:T.text},{l:"Goles",v:st.goals,c:T.green},{l:"Conv.",v:`${pct2}%`,c:pct2>=60?T.green:T.yellow},{l:"Ataj.",v:st.saved,c:"#60a5fa"},{l:"Err.",v:st.miss,c:T.red}].map(k=>(
-                            <div key={k.l} style={{flex:1,background:T.card2,borderRadius:7,padding:"4px 2px",textAlign:"center"}}>
-                              <div style={{fontSize:12,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
-                              <div style={{fontSize:7,color:T.muted,marginTop:1}}>{k.l}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden"}}>
-                          <div style={{width:`${maxTotal?st.total/maxTotal*100:0}%`,height:"100%",background:sc}}/>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {sides.map(s=>{
-                  const st=sideStats[s];
-                  const sc=sideColor(s);
-                  const allZones=Object.entries(st.byZone).sort(([,a],[,b])=>b.total-a.total);
-                  if(st.total===0) return null;
-                  return(
-                    <Card key={s} style={{marginBottom:10}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-                        <span style={{fontSize:14,color:sc}}>{sideIcon(s)}</span>
-                        <span style={{fontSize:12,fontWeight:700,color:sc}}>{sideLabel(s)} — por zona</span>
-                        <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                          <span style={{fontSize:11,fontWeight:700,color:T.green}}>{st.goals}⚽</span>
-                          <span style={{fontSize:11,color:"#60a5fa"}}>{st.saved}🧤</span>
-                          <span style={{fontSize:11,color:T.red}}>{st.miss}❌</span>
-                        </div>
-                      </div>
-                      {allZones.map(([zk,zs])=>{
-                        const zc=ZONES[zk]?.color||T.muted;
-                        const zpct=zs.total?Math.round(zs.goals/zs.total*100):0;
-                        return(
-                          <div key={zk} style={{marginBottom:8,background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${zc}`}}>
-                            <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-                              <span style={{fontSize:11,fontWeight:700,color:zc,flex:1}}>{ZONES[zk]?.label}</span>
-                              <span style={{fontSize:10,color:T.muted}}>{zs.total} tiros · {zpct}% conv.</span>
-                            </div>
-                            <div style={{display:"flex",gap:5,marginBottom:5}}>
-                              {[{l:"Goles",v:zs.goals,c:T.green},{l:"Ataj.",v:zs.saved,c:"#60a5fa"},{l:"Err.",v:zs.miss,c:T.red}].map(x=>(
-                                <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0"}}>
-                                  <div style={{fontSize:16,fontWeight:900,color:x.c}}>{x.v}</div>
-                                  <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{height:5,borderRadius:2,background:T.border,overflow:"hidden",display:"flex"}}>
-                              <div style={{width:`${zs.total?zs.goals/zs.total*100:0}%`,background:T.green}}/>
-                              <div style={{width:`${zs.total?zs.saved/zs.total*100:0}%`,background:"#60a5fa"}}/>
-                              <div style={{width:`${zs.total?zs.miss/zs.total*100:0}%`,background:T.red}}/>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {st.noZone.total>0&&(
-                        <div style={{background:T.card2,borderRadius:10,padding:"9px 10px",borderLeft:`3px solid ${T.muted}`}}>
-                          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-                            <span style={{fontSize:11,fontWeight:700,color:T.muted,flex:1}}>Sin zona registrada</span>
-                            <span style={{fontSize:10,color:T.muted}}>{st.noZone.total} tiros</span>
-                          </div>
-                          <div style={{display:"flex",gap:5}}>
-                            {[{l:"Goles",v:st.noZone.goals,c:T.green},{l:"Ataj.",v:st.noZone.saved,c:"#60a5fa"},{l:"Err.",v:st.noZone.miss,c:T.red}].map(x=>(
-                              <div key={x.l} style={{flex:1,textAlign:"center",background:x.c+"12",borderRadius:7,padding:"5px 0"}}>
-                                <div style={{fontSize:15,fontWeight:800,color:x.c}}>{x.v}</div>
-                                <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
               </div>
             )}
           </div>
         );};
         return <QuickSideAnalysis/>;      })()}
-      {/* KPIs */}
-      <div style={{display:"flex",gap:5,marginBottom:12}}>
-        {[{l:"Tiros",v:totals.total,c:T.text},{l:"Goles",v:totals.goals,c:T.green},{l:"Conv.",v:`${pct}%`,c:pct>=50?T.green:T.yellow},{l:"Ataj.",v:totals.saved,c:"#60a5fa"},{l:"Err.",v:totals.miss,c:T.red}].map(k=>(
-          <div key={k.l} style={{flex:1,background:T.card,borderRadius:9,padding:"7px 3px",border:`1px solid ${T.border}`,textAlign:"center"}}>
-            <div style={{fontSize:13,fontWeight:800,color:k.c,lineHeight:1}}>{k.v}</div>
-            <div style={{fontSize:8,color:T.muted,marginTop:2}}>{k.l}</div>
+      {/* ── KPIs principales ── */}
+      {(()=>{
+        const penalGoals=shots.filter(s=>s.result==="goal"&&s.distance==="penal").length;
+        const rivalGKSaved=rivalGKMap.named.reduce((a,g)=>a+g.saved,0)+(rivalGKMap.quick?.saved||0);
+        const rivalGKTotal=rivalGKMap.named.reduce((a,g)=>a+g.total,0)+(rivalGKMap.quick?.total||0);
+        const rivSavePct=rivalGKTotal?Math.round(rivalGKSaved/rivalGKTotal*100):0;
+        const kpis=[
+          {emoji:"🎯",l:"Tiros",v:totals.total,c:T.text},
+          {emoji:"⚽",l:"Goles",v:totals.goals,c:T.green},
+          {emoji:"🧤",l:"Atajadas",v:totals.saved,c:"#60a5fa"},
+          {emoji:"❌",l:"Errados",v:totals.miss,c:T.muted},
+          {emoji:"📊",l:"Conversión",v:`${pct}%`,c:pct>=50?T.green:T.yellow},
+          {emoji:"🛑",l:"% Arq. rival",v:rivalGKTotal?`${rivSavePct}%`:"—",c:rivSavePct>=40?T.orange:T.green},
+          {emoji:"🥅",l:"Penales",v:penalGoals,c:T.purple},
+        ];
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:14}}>
+            {kpis.map(k=>(
+              <div key={k.l} style={{background:T.card,borderRadius:11,padding:"10px 6px",border:`1px solid ${T.border}`,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                <span style={{fontSize:16,lineHeight:1}}>{k.emoji}</span>
+                <div style={{fontSize:18,fontWeight:900,color:k.c,lineHeight:1}}>{k.v}</div>
+                <div style={{fontSize:8,color:T.muted,letterSpacing:.5,textTransform:"uppercase"}}>{k.l}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
       {shots.length===0?(
+
         <div style={{textAlign:"center",padding:"30px 20px",color:T.muted}}>
           <div style={{fontSize:32,marginBottom:8}}>{dataMode==="full"?"📋":"⚡"}</div>
           <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:4}}>Sin datos de {dataMode==="full"?"registro completo":"registro rápido"}</div>
@@ -1467,8 +1313,8 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
         <>
           <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
             {(dataMode==="full"
-              ?[{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"sides",l:"↔️ Lados"},{k:"analysis",l:"📐 Análisis"}]
-              :[{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"sides",l:"↔️ Lados"},{k:"analysis",l:"📐 Análisis"}]
+              ?[{k:"court",l:"🏟 Cancha"},{k:"goal",l:"🥅 Arco"},{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}]
+              :[{k:"players",l:"👥 Jugadores"},{k:"keeper",l:"🧤 Arquero"},{k:"analysis",l:"📐 Análisis"}]
             ).map(t=>(
               <button key={t.k} onClick={()=>setMainTab(t.k)}
                 style={{flex:1,background:mainTab===t.k?T.accent:T.card,color:mainTab===t.k?"#fff":T.muted,
@@ -1840,9 +1686,6 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
               }
             </div>
           )}
-          {mainTab==="sides"&&(
-            <SidesTab sideStats={sideStats} homeTeam={homeTeam} matchTitle={matchTitle} homeColor={homeTeam?.color||T.accent}/>
-          )}
           {mainTab==="analysis"&&(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {[{items:DISTANCES,key:"distance",title:"📏 Por Distancia",color:T.accent},
@@ -1926,7 +1769,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
   const [completingId,setCompletingId]=useState(null);
   const [form,setForm]=useState({type:"goal",team:"home",zone:null,quadrant:null,shooter:null,goalkeeper:null,sanctioned:null,minute:"1"});
   const [lForm,setLForm]=useState({type:"goal",team:"home",zone:null,quadrant:null,shooter:null,goalkeeper:null,sanctioned:null,minute:"1",distance:null,situation:"igualdad",throwType:null});
-  const [homeSide,setHomeSide]=useState("right");
   const [quickZone,setQuickZone]=useState(null);
   const [quickSit,setQuickSit]=useState("igualdad");
 
@@ -1978,7 +1820,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     });
   };
 
-  const awaySide=homeSide==="right"?"left":"right";
   const upd=(k,v)=>setForm(f=>({...f,[k]:v}));
   const lupd=(k,v)=>setLForm(f=>({...f,[k]:v}));
 
@@ -2006,10 +1847,9 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
 
   const quickTap=(type,team)=>{
     const score=calcScore(type,team);
-    const side=team==="home"?homeSide:awaySide;
     const localId=Date.now();
     const min=timerRunning||timerSecs<30*60?realMinute:minute;
-    const ev={id:localId,min,team,type,attackSide:side,zone:quickZone,quadrant:null,situation:quickSit,shooter:null,goalkeeper:null,sanctioned:null,completed:false,quickMode:true,...score};
+    const ev={id:localId,min,team,type,zone:quickZone,quadrant:null,situation:quickSit,shooter:null,goalkeeper:null,sanctioned:null,completed:false,quickMode:true,...score};
     setEvents(prev=>[...prev,ev]);
     saveEv(ev);
     // Disparar cronómetro de exclusión automáticamente
@@ -2191,32 +2031,13 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     const TeamBlock=({team,teamData,stats})=>{
       const c=teamData?.color||T.muted;
       const name=teamData?.name||team;
-      const side=team==="home"?homeSide:awaySide;
       return(
         <div style={{background:c+"0c",borderRadius:16,border:`1px solid ${c}30`,padding:"11px 11px 13px",marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:9,height:9,borderRadius:"50%",background:c}}/>
               <span style={{fontSize:13,fontWeight:800,color:c}}>{name}</span>
             </div>
-            {team==="home"?(
-              <div style={{display:"flex",alignItems:"center",gap:3}}>
-                <span style={{fontSize:8,color:T.muted}}>Ataca</span>
-                <div style={{display:"flex",background:T.card2,borderRadius:7,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-                  {[{v:"left",l:"◀"},{v:"right",l:"▶"}].map(opt=>(
-                    <button key={opt.v} onClick={()=>setHomeSide(opt.v)}
-                      style={{padding:"3px 8px",fontSize:10,fontWeight:700,cursor:"pointer",border:"none",
-                        background:homeSide===opt.v?c+"44":"transparent",color:homeSide===opt.v?c:T.muted}}>
-                      {opt.l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ):(
-              <span style={{fontSize:9,color:c,background:c+"22",borderRadius:6,padding:"3px 7px"}}>
-                {awaySide==="left"?"◀":  "▶"}
-              </span>
-            )}
           </div>
           {/* Zona */}
           <div style={{marginBottom:7}}>
