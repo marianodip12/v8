@@ -201,13 +201,13 @@ function ScoreChart({events,homeColor,awayColor}){
   },[events]);
   if(pts.length<2)return <div style={{textAlign:"center",color:T.muted,fontSize:11,padding:"20px 0"}}>Sin datos de marcador</div>;
   const maxG=Math.max(...pts.map(p=>Math.max(p.h,p.a)),5);
-  const maxM=60;
-  const W=320,H=100,PL=24,PR=8,PT=8,PB=20;
+  const maxM=Math.max(...pts.map(p=>p.min),60);
+  const W=320,H=90,PL=24,PR=8,PT=8,PB=16;
   const iW=W-PL-PR,iH=H-PT-PB;
-  const xS=m=>(m/maxM)*iW+PL;
+  const xS=p=>(p.min/maxM)*iW+PL;
   const yS=v=>H-PB-((v/maxG)*iH);
-  const poly=arr=>arr.map(p=>`${xS(p.min)},${yS(p.h)}`).join(" ");
-  const polyA=arr=>arr.map(p=>`${xS(p.min)},${yS(p.a)}`).join(" ");
+  const poly=arr=>arr.map(p=>`${xS(p)},${yS(p)}`).join(" ");
+  const half=events.find(e=>e.type==="half_time");
   return(
     <svg viewBox={`0 0 ${W} ${H}`} width="100%">
       {[0,Math.round(maxG/2),maxG].map(v=>(
@@ -216,20 +216,14 @@ function ScoreChart({events,homeColor,awayColor}){
           <text x={PL-3} y={yS(v)+3} textAnchor="end" style={{fontSize:7,fill:T.muted}}>{v}</text>
         </g>
       ))}
-      {/* X axis labels */}
-      {[0,15,30,45,60].map(m=>(
-        <text key={m} x={xS(m)} y={H-4} textAnchor="middle" style={{fontSize:7,fill:T.muted}}>{m}'</text>
-      ))}
-      {/* Half time line at 30' */}
-      <line x1={xS(30)} y1={PT} x2={xS(30)} y2={H-PB} stroke="#8b5cf6" strokeWidth="1.2" strokeDasharray="3,2"/>
-      <text x={xS(30)} y={PT+6} textAnchor="middle" style={{fontSize:6,fill:"#8b5cf6",fontWeight:700}}>1T|2T</text>
+      {half&&<line x1={xS({min:half.min})} y1={PT} x2={xS({min:half.min})} y2={H-PB} stroke="#8b5cf6" strokeWidth="1" strokeDasharray="3,2"/>}
       <polyline points={poly(pts)} fill="none" stroke={homeColor} strokeWidth="2" strokeLinejoin="round"/>
-      <polyline points={polyA(pts)} fill="none" stroke={awayColor} strokeWidth="2" strokeLinejoin="round"/>
+      <polyline points={poly(pts.map(p=>({...p,h:p.a})))} fill="none" stroke={awayColor} strokeWidth="2" strokeLinejoin="round"/>
       {pts.map((p,i)=>i>0&&p.h!==pts[i-1].h&&(
-        <circle key={i+"h"} cx={xS(p.min)} cy={yS(p.h)} r="3" fill={homeColor}/>
+        <circle key={i+"h"} cx={xS(p)} cy={yS(p.h)} r="3" fill={homeColor}/>
       ))}
       {pts.map((p,i)=>i>0&&p.a!==pts[i-1].a&&(
-        <circle key={i+"a"} cx={xS(p.min)} cy={yS(p.a)} r="3" fill={awayColor}/>
+        <circle key={i+"a"} cx={xS(p)} cy={yS(p.a)} r="3" fill={awayColor}/>
       ))}
     </svg>
   );
@@ -1814,10 +1808,8 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
           )}
           {mainTab==="keeper"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {/* Mi arquero — datos de temporada */}
-              <div style={{fontSize:10,color:"#60a5fa",fontWeight:700,letterSpacing:1}}>🧤 MI ARQUERO</div>
               {goalkeeperMap.length===0
-                ?<div style={{textAlign:"center",padding:"20px",color:T.muted}}><div style={{fontSize:28,marginBottom:8}}>🧤</div><div style={{fontSize:12}}>Sin datos — registrá con modo completo</div></div>
+                ?<div style={{textAlign:"center",padding:"30px",color:T.muted}}><div style={{fontSize:28,marginBottom:8}}>🧤</div><div style={{fontSize:12}}>Sin datos de arquero</div></div>
                 :goalkeeperMap.map((gk,i)=>{
                   const pct=gk.total?Math.round(gk.saved/gk.total*100):0;
                   return(<Card key={gk.name}>
@@ -1846,50 +1838,6 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
                   </Card>);
                 })
               }
-              {/* Arqueros rivales de temporada */}
-              {(()=>{
-                const rivalShotsAll=allSeasonEvents.filter(e=>["goal","miss","saved"].includes(e.type)&&e.team==="away"&&e.goalkeeper);
-                const rm={};
-                rivalShotsAll.forEach(s=>{
-                  const k=s.goalkeeper?.name||"?";
-                  if(!rm[k])rm[k]={name:k,number:s.goalkeeper?.number||0,saved:0,goals:0,miss:0,total:0};
-                  rm[k].total++;
-                  if(s.type==="saved")rm[k].saved++;
-                  else if(s.type==="goal")rm[k].goals++;
-                  else rm[k].miss++;
-                });
-                const rivals=Object.values(rm).sort((a,b)=>b.total-a.total);
-                if(rivals.length===0)return null;
-                return(<>
-                  <div style={{fontSize:10,color:T.orange,fontWeight:700,letterSpacing:1,marginTop:8}}>🧤 ARQUEROS RIVALES — TEMPORADA</div>
-                  {rivals.map(gk=>{
-                    const p=gk.total?Math.round(gk.saved/gk.total*100):0;
-                    return(<Card key={gk.name}>
-                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:T.orange+"22",border:`2px solid ${T.orange}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                          <span style={{fontSize:11,fontWeight:800,color:T.orange}}>#{gk.number||"?"}</span>
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:700,color:T.text}}>{gk.name}</div>
-                          <div style={{fontSize:10,color:T.muted}}>{gk.total} tiros recibidos</div>
-                        </div>
-                        <div style={{textAlign:"center"}}>
-                          <div style={{fontSize:20,fontWeight:900,color:p>=40?T.red:T.green}}>{p}%</div>
-                          <div style={{fontSize:8,color:T.muted}}>atajado</div>
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:4}}>
-                        {[{l:"Tiros",v:gk.total,c:T.text},{l:"Atajadas",v:gk.saved,c:"#60a5fa"},{l:"Goles",v:gk.goals,c:T.green},{l:"% Ataj.",v:`${p}%`,c:p>=40?"#60a5fa":T.green}].map(x=>(
-                          <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:8,padding:"5px 0",background:x.c+"12",border:`1px solid ${x.c}28`}}>
-                            <div style={{fontSize:13,fontWeight:800,color:x.c}}>{x.v}</div>
-                            <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>);
-                  })}
-                </>);
-              })()}
             </div>
           )}
           {mainTab==="sides"&&(
@@ -1984,9 +1932,8 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
 
   // ── CRONÓMETRO ────────────────────────────────────────
   const [half,setHalf]=useState(1);           // 1 o 2
-  const [timerSecs,setTimerSecs]=useState(0); // 00:00 — cuenta de 0 a 30
+  const [timerSecs,setTimerSecs]=useState(30*60); // 30:00
   const [timerRunning,setTimerRunning]=useState(false);
-  const [pauseReason,setPauseReason]=useState(null); // "exclusion"|"timeout"|null
   const [exclusions,setExclusions]=useState([]); // [{id,team,player,secs}]
   const timerRef=useRef(null);
 
@@ -1994,8 +1941,8 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     if(timerRunning){
       timerRef.current=setInterval(()=>{
         setTimerSecs(s=>{
-          const ns=s+1;
-          if(ns>=30*60){ clearInterval(timerRef.current); setTimerRunning(false); return 30*60; }
+          const ns=s-1;
+          if(ns<=0){ clearInterval(timerRef.current); setTimerRunning(false); return 0; }
           return ns;
         });
         setExclusions(prev=>prev.map(e=>({...e,secs:e.secs-1})).filter(e=>e.secs>0));
@@ -2012,25 +1959,14 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
   };
 
-  // Minuto real del cronómetro (para guardar en evento) — timer cuenta de 0 a 30
-  const realMinute=Math.max(1,Math.floor(timerSecs/60)+(half===2?30:0));
+  // Minuto real del cronómetro (para guardar en evento)
+  const realMinute=Math.max(1,Math.ceil((30*60-timerSecs)/60)+(half===2?30:0));
 
   const startHalf=(h)=>{
     setHalf(h);
-    setTimerSecs(0);
+    setTimerSecs(30*60);
     setTimerRunning(true);
-    setPauseReason(null);
     setExclusions([]);
-  };
-
-  const pauseFor=(reason)=>{
-    setTimerRunning(false);
-    setPauseReason(reason);
-  };
-
-  const resumeTimer=()=>{
-    setTimerRunning(true);
-    setPauseReason(null);
   };
 
   const addExclusion=(team,player)=>{
@@ -2040,7 +1976,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
       if(teamExcl.length>=2)return prev; // máx 2 por equipo
       return [...prev,{id,team,player,secs:120}];
     });
-    pauseFor("exclusion");
   };
 
   const awaySide=homeSide==="right"?"left":"right";
@@ -2073,14 +2008,12 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     const score=calcScore(type,team);
     const side=team==="home"?homeSide:awaySide;
     const localId=Date.now();
-    const min=timerRunning||timerSecs>0?realMinute:minute;
-    const isPenal=quickZone==="penal";
-    const ev={id:localId,min,team,type,attackSide:side,zone:quickZone,quadrant:null,situation:isPenal?"penal":quickSit,shooter:null,goalkeeper:null,sanctioned:null,completed:false,quickMode:true,...score};
+    const min=timerRunning||timerSecs<30*60?realMinute:minute;
+    const ev={id:localId,min,team,type,attackSide:side,zone:quickZone,quadrant:null,situation:quickSit,shooter:null,goalkeeper:null,sanctioned:null,completed:false,quickMode:true,...score};
     setEvents(prev=>[...prev,ev]);
     saveEv(ev);
-    // Auto-pausa: exclusión y tiempo muerto
-    if(type==="exclusion") addExclusion(team,null); // addExclusion ya llama pauseFor
-    if(type==="timeout") pauseFor("timeout");
+    // Disparar cronómetro de exclusión automáticamente
+    if(type==="exclusion") addExclusion(team,null);
   };
 
   const deleteEvent=(id)=>{
@@ -2120,9 +2053,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     const ev={id:localId,min,team:form.team,type:form.type,completed:true,sanctioned,hScore:prev.hScore,aScore:prev.aScore};
     setEvents(p=>[...p,ev]);
     saveEv(ev);
-    // Auto-pause on exclusion or timeout
-    if(form.type==="exclusion"){ addExclusion(form.team, form.sanctioned); pauseFor("exclusion"); }
-    if(form.type==="timeout") pauseFor("timeout");
     setStep(null);
     setForm(f=>({...f,sanctioned:null,minute:"1"}));
   };
@@ -2151,9 +2081,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     const ev={id:localId,min,team:lForm.team,type:lForm.type,completed:true,sanctioned,hScore:prev.hScore,aScore:prev.aScore};
     setEvents(p=>[...p,ev]);
     saveEv(ev);
-    // Auto-pause
-    if(lForm.type==="exclusion"){ addExclusion(lForm.team, lForm.sanctioned); pauseFor("exclusion"); }
-    if(lForm.type==="timeout") pauseFor("timeout");
     setLForm(f=>({...f,sanctioned:null}));
   };
 
@@ -2167,10 +2094,7 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
   const awayC=awayTeamData.color||T.muted;
 
   // ── SCOREBOARD ──
-  const Scoreboard=()=>{
-    const isFinished=timerSecs>=30*60;
-    const timerColor=isFinished?T.green:timerRunning?T.text:pauseReason?"#f97316":T.yellow;
-    return(
+  const Scoreboard=()=>(
     <div style={{marginBottom:10}}>
       {/* Scores */}
       <div style={{background:`linear-gradient(135deg,${homeC}18,${awayC}18)`,borderRadius:14,padding:"10px 14px",border:`1px solid ${T.border}`,marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -2178,39 +2102,30 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
           <div style={{fontSize:10,fontWeight:700,color:homeC,marginBottom:2}}>{homeTeam?.name||"Local"}</div>
           <div style={{fontSize:36,fontWeight:900,color:homeC,lineHeight:1}}>{lastScore.hScore}</div>
         </div>
-        <div style={{textAlign:"center",padding:"0 8px",minWidth:110}}>
-          {/* Half indicator */}
-          <div style={{display:"flex",justifyContent:"center",gap:4,marginBottom:3}}>
+        <div style={{textAlign:"center",padding:"0 10px"}}>
+          {/* Cronómetro */}
+          <div style={{fontSize:20,fontWeight:900,color:timerSecs===0?T.red:timerRunning?T.green:T.yellow,
+            letterSpacing:1,lineHeight:1,marginBottom:4}}>
+            {fmtTime(timerSecs)}
+          </div>
+          <div style={{display:"flex",gap:4,justifyContent:"center",marginBottom:4}}>
+            {/* Play/Pause */}
+            <button onClick={()=>setTimerRunning(r=>!r)}
+              style={{background:timerRunning?"rgba(239,68,68,.2)":"rgba(34,197,94,.2)",
+                border:`1px solid ${timerRunning?T.red:T.green}`,color:timerRunning?T.red:T.green,
+                borderRadius:7,padding:"3px 8px",fontSize:11,cursor:"pointer",fontWeight:700}}>
+              {timerRunning?"⏸":"▶"}
+            </button>
+            {/* 1T / 2T */}
             {[1,2].map(h=>(
               <button key={h} onClick={()=>startHalf(h)}
                 style={{background:half===h?T.accent+"22":"transparent",color:half===h?T.accent:T.muted,
-                  border:`1px solid ${half===h?T.accent:T.border}`,borderRadius:6,padding:"2px 7px",fontSize:9,cursor:"pointer",fontWeight:700}}>
+                  border:`1px solid ${half===h?T.accent:T.border}`,borderRadius:7,padding:"3px 7px",fontSize:10,cursor:"pointer",fontWeight:700}}>
                 {h}T
               </button>
             ))}
           </div>
-          {/* Timer */}
-          <div style={{fontSize:22,fontWeight:900,color:timerColor,letterSpacing:1,lineHeight:1,marginBottom:3}}>
-            {fmtTime(timerSecs)}
-          </div>
-          {/* Pause reason badge */}
-          {pauseReason&&!timerRunning&&(
-            <div style={{fontSize:9,color:pauseReason==="exclusion"?T.orange:T.yellow,fontWeight:700,marginBottom:3,
-              background:pauseReason==="exclusion"?"rgba(249,115,22,.15)":"rgba(245,158,11,.15)",
-              borderRadius:6,padding:"2px 6px",display:"inline-block"}}>
-              {pauseReason==="exclusion"?"⏱ EXCL.":"⏸ T.MUERTO"}
-            </div>
-          )}
-          {/* Play/Pause button */}
-          <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-            <button onClick={()=>timerRunning?setTimerRunning(false):(resumeTimer())}
-              style={{background:timerRunning?"rgba(239,68,68,.2)":"rgba(34,197,94,.2)",
-                border:`1px solid ${timerRunning?T.red:T.green}`,color:timerRunning?T.red:T.green,
-                borderRadius:7,padding:"4px 12px",fontSize:13,cursor:"pointer",fontWeight:700}}>
-              {timerRunning?"⏸":"▶"}
-            </button>
-          </div>
-          <div style={{color:T.muted,fontSize:12,fontWeight:700,marginTop:4}}>–</div>
+          <div style={{color:T.muted,fontSize:14,fontWeight:700}}>–</div>
         </div>
         <div style={{textAlign:"center",flex:1}}>
           <div style={{fontSize:10,fontWeight:700,color:awayC,marginBottom:2}}>{awayTeamData.name}</div>
@@ -2219,9 +2134,9 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
       </div>
       {/* Exclusiones activas */}
       {exclusions.length>0&&(
-        <div style={{display:"flex",gap:6,marginBottom:2,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:6,marginBottom:2}}>
           {exclusions.map(ex=>(
-            <div key={ex.id} style={{flex:"1 1 calc(50% - 3px)",minWidth:120,background:"rgba(249,115,22,.12)",border:"1px solid rgba(249,115,22,.4)",
+            <div key={ex.id} style={{flex:1,background:"rgba(249,115,22,.12)",border:"1px solid rgba(249,115,22,.4)",
               borderRadius:9,padding:"5px 8px",display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:ex.team==="home"?homeC:awayC,flexShrink:0}}/>
               <span style={{fontSize:10,color:T.orange,fontWeight:700,flex:1}}>
@@ -2236,15 +2151,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
             </div>
           ))}
         </div>
-      )}
-      {/* Reanudar cronómetro si está pausado */}
-      {!timerRunning&&timerSecs>0&&timerSecs<30*60&&(
-        <button onClick={resumeTimer}
-          style={{width:"100%",background:"rgba(34,197,94,.15)",border:"1px solid rgba(34,197,94,.4)",
-            color:T.green,borderRadius:9,padding:"7px",fontWeight:800,fontSize:12,cursor:"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:4}}>
-          ▶ {pauseReason==="exclusion"?"Reanudar tras exclusión":pauseReason==="timeout"?"Reanudar tras tiempo muerto":"Reanudar cronómetro"}
-        </button>
       )}
     </div>
   );
@@ -2334,13 +2240,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
               </div>
             ))}
           </div>
-          {/* 7m Penal shortcut */}
-          <button onClick={()=>{setQuickZone("penal");setQuickSit("igualdad");quickTap("goal",team);}}
-            style={{width:"100%",background:"rgba(255,255,255,.07)",border:"1.5px dashed rgba(255,255,255,.25)",
-              borderRadius:10,padding:"7px 5px",color:"#fff",fontWeight:800,fontSize:11,cursor:"pointer",
-              marginBottom:7,display:"flex",alignItems:"center",justifyContent:"center",gap:6,WebkitTapHighlightColor:"transparent"}}>
-            ⚪ <span>PENAL 7m</span> <span style={{fontSize:9,fontWeight:400,color:T.muted}}>→ Gol directo</span>
-          </button>
           {/* Buttons */}
           <div style={{display:"flex",gap:5}}>
             {[{k:"goal",icon:"⚽",lbl:"GOL",c:T.green},{k:"saved",icon:"🧤",lbl:"ATAJ.",c:"#60a5fa"},{k:"miss",icon:"❌",lbl:"FUERA",c:T.red},{k:"turnover",icon:"🔄",lbl:"PÉRD.",c:T.muted}].map((b,i)=>(
@@ -2414,16 +2313,6 @@ function RegisterPage({events,setEvents,matchStatus,matchInfo,onCloseMatch,onSta
     const canSubmit=lForm.zone&&lForm.quadrant!=null&&lForm.shooter;
     return(
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        {/* 7m Penal shortcut */}
-        <button onClick={()=>{lupd("zone","penal");lupd("distance","penal");}}
-          style={{background:lForm.zone==="penal"?"rgba(255,255,255,.12)":"rgba(255,255,255,.04)",
-            border:`1.5px ${lForm.zone==="penal"?"solid":"dashed"} rgba(255,255,255,${lForm.zone==="penal"?".5":".2"})`,
-            borderRadius:12,padding:"10px 14px",color:lForm.zone==="penal"?"#fff":"rgba(255,255,255,.6)",
-            fontWeight:800,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:8,WebkitTapHighlightColor:"transparent"}}>
-          <span style={{fontSize:18}}>⚪</span>
-          <span>PENAL 7 METROS</span>
-          {lForm.zone==="penal"&&<span style={{marginLeft:"auto",fontSize:10,color:T.green}}>✓ Seleccionado</span>}
-        </button>
         <MiniCourt onZoneClick={(z)=>lupd("zone",z)} selZone={lForm.zone} heatCounts={heatCounts}/>
         <div>
           <SectionLabel>TIPO DE EVENTO</SectionLabel>
