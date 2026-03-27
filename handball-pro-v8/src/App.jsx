@@ -948,7 +948,9 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
 
 
 
+  // Si Completo no tiene datos, mostrar los de Rápido igualmente en los KPIs
   const shots=dataMode==="full"?fullShots:quickShots;
+  const kpiShots=fullShots.length>0?fullShots:quickShots; // siempre muestra algo
 
   // Stats por arquero
   const goalkeeperMap=useMemo(()=>{
@@ -1194,200 +1196,34 @@ function StatsPage({liveEvents=[],matchEvents,matchTitle,onBack,completedMatches
           ⚡ Rápido ({quickShots.length})
         </button>
       </div>
-      {dataMode==="quick"&&(()=>{
-        const QuickSideAnalysis=()=>{
-        const teamLabel=t=>t==="home"?(matchTitle?matchTitle.split(" ")[0]:homeTeamName):"Rival";
-        const teamColor=t=>t==="home"?T.accent:"#64748b";
-        const [qTeam,setQTeam]=useState("home");
-        const [qMode,setQMode]=useState("goals"); // "goals"|"saved"|"miss"|"total"
-        const [qSelZone,setQSelZone]=useState(null);
 
-        const qTeamShots=quickShots.filter(s=>s.team===qTeam);
-        const qWithZone=qTeamShots.filter(s=>s.zone);
-
-        const qZoneStats=Object.keys(ZONES).reduce((a,k)=>{
-          const zs=qTeamShots.filter(s=>s.zone===k);
-          a[k]={goals:zs.filter(s=>s.result==="goal").length,
-                saved:zs.filter(s=>s.result==="saved").length,
-                miss:zs.filter(s=>s.result==="miss").length,
-                total:zs.length,shots:zs};
-          return a;
-        },{});
-
-        const getVal=k=>qMode==="goals"?qZoneStats[k]?.goals:qMode==="saved"?qZoneStats[k]?.saved:qMode==="miss"?qZoneStats[k]?.miss:qZoneStats[k]?.total;
-        const modeColor=qMode==="goals"?T.green:qMode==="saved"?"#60a5fa":qMode==="miss"?T.red:T.yellow;
-        const qMaxVal=Math.max(...Object.keys(ZONES).map(k=>getVal(k)||0),1);
-
-        const qHeatFill=k=>{
-          const v=getVal(k)||0;
-          if(!v)return "rgba(255,255,255,0.04)";
-          const a=Math.min(0.75,0.18+v/qMaxVal*0.57);
-          if(qMode==="goals")return `rgba(34,197,94,${a})`;
-          if(qMode==="saved")return `rgba(96,165,250,${a})`;
-          if(qMode==="miss") return `rgba(239,68,68,${a})`;
-          return `rgba(245,158,11,${a})`;
-        };
-
-        const totQ={
-          total:qTeamShots.length,
-          goals:qTeamShots.filter(s=>s.result==="goal").length,
-          saved:qTeamShots.filter(s=>s.result==="saved").length,
-          miss:qTeamShots.filter(s=>s.result==="miss").length,
-        };
-
-        // Análisis por lado
-        const sideData=["left","right"].map(side=>{
-          const ss=qTeamShots.filter(s=>s.attackSide===side);
-          return{side,label:side==="left"?"◀ Izquierda":"▶ Derecha",
-            color:side==="left"?"#06b6d4":"#f59e0b",
-            goals:ss.filter(s=>s.result==="goal").length,
-            saved:ss.filter(s=>s.result==="saved").length,
-            miss:ss.filter(s=>s.result==="miss").length,
-            total:ss.length};
-        }).filter(s=>s.total>0);
-
-        if(quickShots.length===0) return(
-          <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.3)",borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:11,color:T.yellow}}>
-            ⚡ Sin datos de modo rápido registrados.
-          </div>
-        );
-
-        return(
-          <div>
-            {/* Selector de equipo */}
-            <div style={{display:"flex",gap:5,marginBottom:10}}>
-              {["home","away"].map(t=>(
-                <button key={t} onClick={()=>setQTeam(t)}
-                  style={{flex:1,background:qTeam===t?teamColor(t)+"22":T.card,color:qTeam===t?teamColor(t):T.muted,
-                    border:`1px solid ${qTeam===t?teamColor(t):T.border}`,borderRadius:9,padding:"7px 4px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
-                  {teamLabel(t)}
-                </button>
-              ))}
-            </div>
-            {/* KPIs */}
-            <div style={{display:"flex",gap:4,marginBottom:10}}>
-              {[{k:"goals",l:"⚽ Goles",v:totQ.goals,c:T.green},{k:"saved",l:"🧤 Ataj.",v:totQ.saved,c:"#60a5fa"},{k:"miss",l:"❌ Err.",v:totQ.miss,c:T.red},{k:"total",l:"📊 Total",v:totQ.total,c:T.yellow}].map(m=>(
-                <button key={m.k} onClick={()=>setQMode(m.k)}
-                  style={{flex:1,background:qMode===m.k?m.c+"22":T.card,color:qMode===m.k?m.c:T.muted,
-                    border:`1px solid ${qMode===m.k?m.c:T.border}`,borderRadius:9,padding:"6px 2px",fontSize:9,fontWeight:700,cursor:"pointer",
-                    display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-                  <span style={{fontSize:8}}>{m.l}</span>
-                  <span style={{fontSize:14,fontWeight:900}}>{m.v}</span>
-                </button>
-              ))}
-            </div>
-            {/* Mapa de calor interactivo */}
-            {qWithZone.length>0&&(
-              <div style={{marginBottom:10}}>
-                <div style={{background:"#0f2a5a",borderRadius:12,padding:"8px 4px",border:"1px solid #1e407a",marginBottom:6}}>
-                  <svg viewBox="-8 -28 296 190" width="100%" preserveAspectRatio="xMidYMid meet" style={{display:"block",maxWidth:360,margin:"0 auto"}}>
-                    <rect x="-8" y="-28" width="296" height="190" fill="#0f2a5a" rx="8"/>
-                    <rect x="0" y="0" width="280" height="155" fill="#2196c4" rx="4"/>
-                    <path d="M 56 0 A 84 84 0 0 1 224 0 Z" fill="#1565a0"/>
-                    {Object.entries(ZONES).map(([key,zone])=>(
-                      <path key={key} d={zone.path}
-                        fill={qSelZone===key?zone.color+"55":qHeatFill(key)}
-                        stroke={qSelZone===key?"#fff":"rgba(255,255,255,.15)"}
-                        strokeWidth={qSelZone===key?2.5:1}
-                        style={{cursor:"pointer",transition:"all .15s"}}
-                        onClick={()=>setQSelZone(qSelZone===key?null:key)}
-                      />
-                    ))}
-                    {Object.entries(ZONES).map(([key,zone])=>{
-                      const v=getVal(key)||0;
-                      return(
-                        <g key={key+"t"}>
-                          <text x={zone.lx} y={zone.ly-5} textAnchor="middle"
-                            style={{fontSize:9,fill:"rgba(255,255,255,.7)",fontWeight:700,pointerEvents:"none"}}>
-                            {zone.short}
-                          </text>
-                          {v>0&&(
-                            <text x={zone.lx} y={zone.ly+8} textAnchor="middle"
-                              style={{fontSize:12,fill:modeColor,fontWeight:900,pointerEvents:"none"}}>
-                              {v}
-                            </text>
-                          )}
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
-                {/* Detalle de zona seleccionada */}
-                {qSelZone&&qZoneStats[qSelZone]&&(
-                  <div style={{background:T.card,borderRadius:11,border:`1px solid ${ZONES[qSelZone]?.color}44`,padding:"10px 12px",marginBottom:6}}>
-                    <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:8}}>{ZONES[qSelZone]?.label} — {qZoneStats[qSelZone].total} tiros</div>
-                    <div style={{display:"flex",gap:5,marginBottom:6}}>
-                      {[{l:"⚽ Goles",v:qZoneStats[qSelZone].goals,c:T.green},{l:"🧤 Ataj.",v:qZoneStats[qSelZone].saved,c:"#60a5fa"},{l:"❌ Err.",v:qZoneStats[qSelZone].miss,c:T.red}].map(x=>(
-                        <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:8,padding:"6px 0",background:x.c+"12",border:`1px solid ${x.c}28`}}>
-                          <div style={{fontSize:16,fontWeight:800,color:x.c}}>{x.v}</div>
-                          <div style={{fontSize:8,color:T.muted}}>{x.l}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {qZoneStats[qSelZone].total>0&&(
-                      <div style={{height:5,borderRadius:2,overflow:"hidden",background:T.border,display:"flex"}}>
-                        <div style={{width:`${qZoneStats[qSelZone].goals/qZoneStats[qSelZone].total*100}%`,background:T.green}}/>
-                        <div style={{width:`${qZoneStats[qSelZone].saved/qZoneStats[qSelZone].total*100}%`,background:"#60a5fa"}}/>
-                        <div style={{width:`${qZoneStats[qSelZone].miss/qZoneStats[qSelZone].total*100}%`,background:T.red}}/>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Análisis por lado */}
-            {sideData.length>0&&(
-              <div style={{marginBottom:6}}>
-                <div style={{fontSize:9,color:T.muted,letterSpacing:1,marginBottom:6,textTransform:"uppercase"}}>Por lado de ataque</div>
-                <div style={{display:"flex",gap:6}}>
-                  {sideData.map(s=>{
-                    const pct=s.total?Math.round(s.goals/s.total*100):0;
-                    return(
-                      <div key={s.side} style={{flex:1,background:s.color+"0c",border:`1px solid ${s.color}33`,borderRadius:11,padding:"10px 8px"}}>
-                        <div style={{fontSize:11,fontWeight:700,color:s.color,marginBottom:6}}>{s.label}</div>
-                        <div style={{display:"flex",gap:4,marginBottom:5}}>
-                          {[{l:"⚽",v:s.goals,c:T.green},{l:"🧤",v:s.saved,c:"#60a5fa"},{l:"❌",v:s.miss,c:T.red}].map(x=>(
-                            <div key={x.l} style={{flex:1,textAlign:"center",borderRadius:7,padding:"4px 0",background:x.c+"12"}}>
-                              <div style={{fontSize:14,fontWeight:800,color:x.c}}>{x.v}</div>
-                              <div style={{fontSize:7,color:T.muted}}>{x.l}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{height:4,borderRadius:2,overflow:"hidden",background:T.border,display:"flex"}}>
-                          <div style={{width:`${s.total?s.goals/s.total*100:0}%`,background:T.green}}/>
-                          <div style={{width:`${s.total?s.saved/s.total*100:0}%`,background:"#60a5fa"}}/>
-                          <div style={{width:`${s.total?s.miss/s.total*100:0}%`,background:T.red}}/>
-                        </div>
-                        <div style={{fontSize:9,color:T.muted,marginTop:4,textAlign:"center"}}>{s.total} tiros · {pct}% conv.</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        );};
-        return <QuickSideAnalysis/>;      })()}
       {/* ── KPIs principales — clickeables ── */}
       {(()=>{
-        const penalShots=shots.filter(s=>s.zone==="penal"||s.distance==="penal");
+        const penalShots=kpiShots.filter(s=>s.zone==="penal"||s.distance==="penal");
         const penalGoals=penalShots.filter(s=>s.result==="goal").length;
         const rivalGKSaved=rivalGKMap.named.reduce((a,g)=>a+g.saved,0)+(rivalGKMap.quick?.saved||0);
         const rivalGKTotal=rivalGKMap.named.reduce((a,g)=>a+g.total,0)+(rivalGKMap.quick?.total||0);
         const rivSavePct=rivalGKTotal?Math.round(rivalGKSaved/rivalGKTotal*100):0;
+        const kpiTotals={
+          total:kpiShots.length,
+          goals:kpiShots.filter(s=>s.result==="goal").length,
+          saved:kpiShots.filter(s=>s.result==="saved").length,
+          miss:kpiShots.filter(s=>s.result==="miss").length,
+        };
+        const kpiPct=kpiTotals.total?Math.round(kpiTotals.goals/kpiTotals.total*100):0;
         const kpis=[
-          {key:"goal",   emoji:"⚽", l:"Goles",      v:totals.goals,  c:T.green},
-          {key:"saved",  emoji:"🧤", l:"Atajadas",   v:totals.saved,  c:"#60a5fa"},
-          {key:"miss",   emoji:"❌", l:"Errados",    v:totals.miss,   c:T.muted},
-          {key:"tiros",  emoji:"🎯", l:"Tiros",      v:totals.total,  c:T.text,   noClick:true},
-          {key:"conv",   emoji:"📊", l:"Conversión", v:`${pct}%`,     c:pct>=50?T.green:T.yellow, noClick:true},
+          {key:"goal",   emoji:"⚽", l:"Goles",       v:kpiTotals.goals,  c:T.green},
+          {key:"saved",  emoji:"🧤", l:"Atajadas",    v:kpiTotals.saved,  c:"#60a5fa"},
+          {key:"miss",   emoji:"❌", l:"Errados",     v:kpiTotals.miss,   c:T.muted},
+          {key:"tiros",  emoji:"🎯", l:"Tiros",       v:kpiTotals.total,  c:T.text,   noClick:true},
+          {key:"conv",   emoji:"📊", l:"Conversión",  v:`${kpiPct}%`,     c:kpiPct>=50?T.green:T.yellow, noClick:true},
           {key:"rival",  emoji:"🛑", l:"% Arq. rival",v:rivalGKTotal?`${rivSavePct}%`:"—", c:rivSavePct>=40?T.orange:T.green, noClick:true},
-          {key:"penal",  emoji:"🥅", l:"Penales",    v:penalGoals,    c:T.purple},
+          {key:"penal",  emoji:"🥅", l:"Penales",     v:penalGoals,       c:T.purple},
         ];
 
         // Zona breakdown para el kpi seleccionado
         const zoneBreakdown=kpiFilter&&kpiFilter!=="penal"?(()=>{
-          const filtered=shots.filter(s=>s.result===kpiFilter&&s.zone);
+          const filtered=kpiShots.filter(s=>s.result===kpiFilter&&s.zone);
           const byZone={};
           Object.keys(ZONES).forEach(zk=>{
             const zs=filtered.filter(s=>s.zone===zk);
